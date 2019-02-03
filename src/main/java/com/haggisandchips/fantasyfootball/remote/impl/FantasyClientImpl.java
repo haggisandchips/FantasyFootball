@@ -22,7 +22,7 @@ public class FantasyClientImpl implements FantasyClient {
     // TODO Temporarily parse file
     final Statistics statistics =
         objectMapper.readValue(
-            new File("C:/Users/ivor/Desktop/bootstrap-static.json"), Statistics.class);
+            new File("src/test/resources/data/statistics.json"), Statistics.class);
 
     return statistics.getPlayers();
   }
