@@ -1,13 +1,11 @@
-package com.haggisandchips.fantasyfootball.remote.impl;
+package com.haggisandchips.fantasyfootball.squad;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.PlayerLine;
 import com.haggisandchips.fantasyfootball.domain.Position;
 import com.haggisandchips.fantasyfootball.domain.Squad;
-import com.haggisandchips.fantasyfootball.domain.Statistics;
 import com.haggisandchips.fantasyfootball.domain.Team;
-import com.haggisandchips.fantasyfootball.remote.FantasyClient;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,44 +14,22 @@ import org.springframework.stereotype.Component;
 import java.io.File;
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+// Stand-in for authenticated squad fetching (see SquadProvider) - reads a hand-maintained
+// my-squad.json (see my-squad.example.json) until OAuth-style login is in place.
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class FantasyClientImpl implements FantasyClient {
+public class FileSquadProvider implements SquadProvider {
 
-  // A hand-maintained stand-in for the real my-team endpoint - see my-squad.example.json.
   private static final String MY_SQUAD_FILE = "my-squad.json";
 
   private final ObjectMapper objectMapper;
 
-  @Override
-  public List<Player> getAllPlayers() throws IOException, URISyntaxException, InterruptedException {
-
-    final HttpRequest request = HttpRequest.newBuilder(new URI("https://fantasy.premierleague.com/api/bootstrap-static/"))
-        .timeout(Duration.ofSeconds(5L))
-        .GET().build();
-
-    final HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
-
-    final Statistics statistics = objectMapper.readValue(response.body(), Statistics.class);
-
-    return statistics.getPlayers();
-  }
-
-  // TODO Fetch the authenticated user's actual squad, e.g. from
-  // https://fantasy.premierleague.com/api/my-team/{teamId}/ once OAuth-style authentication
-  // is in place. Until then, this reads my-squad.json (if present) as a manual stand-in.
   @Override
   public Squad getMySquad(final List<Player> allPlayers) throws IOException {
 

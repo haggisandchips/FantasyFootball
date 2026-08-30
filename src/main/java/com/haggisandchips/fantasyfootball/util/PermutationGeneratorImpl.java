@@ -1,4 +1,4 @@
-package com.haggisandchips.fantasyfootball.helpers;
+package com.haggisandchips.fantasyfootball.util;
 
 import java.util.ArrayList;
 import java.util.List;

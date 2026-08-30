@@ -1,7 +1,7 @@
 package com.haggisandchips.fantasyfootball;
 
 import com.haggisandchips.fantasyfootball.domain.Position;
-import com.haggisandchips.fantasyfootball.enums.Strategy;
+import com.haggisandchips.fantasyfootball.domain.Strategy;
 
 import java.math.BigDecimal;
 import java.util.EnumSet;
@@ -11,9 +11,9 @@ import static com.haggisandchips.fantasyfootball.domain.Position.DEFENDER;
 import static com.haggisandchips.fantasyfootball.domain.Position.FORWARD;
 import static com.haggisandchips.fantasyfootball.domain.Position.GOALKEEPER;
 import static com.haggisandchips.fantasyfootball.domain.Position.MIDFIELDER;
-import static com.haggisandchips.fantasyfootball.enums.Strategy.FORM;
-import static com.haggisandchips.fantasyfootball.enums.Strategy.POINTS_PER_GAME;
-import static com.haggisandchips.fantasyfootball.enums.Strategy.SCORE;
+import static com.haggisandchips.fantasyfootball.domain.Strategy.FORM;
+import static com.haggisandchips.fantasyfootball.domain.Strategy.POINTS_PER_GAME;
+import static com.haggisandchips.fantasyfootball.domain.Strategy.SCORE;
 
 public final class Controls {
 

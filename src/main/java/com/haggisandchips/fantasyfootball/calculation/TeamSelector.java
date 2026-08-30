@@ -1,11 +1,13 @@
-package com.haggisandchips.fantasyfootball.helpers;
+package com.haggisandchips.fantasyfootball.calculation;
 
 import com.haggisandchips.fantasyfootball.Controls;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.PlayerLine;
 import com.haggisandchips.fantasyfootball.domain.Position;
+import com.haggisandchips.fantasyfootball.domain.Strategy;
 import com.haggisandchips.fantasyfootball.domain.Team;
-import com.haggisandchips.fantasyfootball.enums.Strategy;
+import com.haggisandchips.fantasyfootball.util.PermutationGenerator;
+import com.haggisandchips.fantasyfootball.util.PermutationGeneratorImpl;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;

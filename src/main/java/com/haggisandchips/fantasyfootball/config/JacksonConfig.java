@@ -1,4 +1,4 @@
-package com.haggisandchips.fantasyfootball.remote.config;
+package com.haggisandchips.fantasyfootball.config;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-public class RemoteConfig {
+public class JacksonConfig {
 
   @Bean
   ObjectMapper objectMapper() {
