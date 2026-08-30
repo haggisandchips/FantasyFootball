@@ -6,11 +6,13 @@ import com.haggisandchips.fantasyfootball.domain.Status;
 import com.haggisandchips.fantasyfootball.domain.Strategy;
 import com.haggisandchips.fantasyfootball.domain.TransferSuggestion;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
 import javafx.scene.control.ToggleGroup;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 
@@ -21,14 +23,20 @@ import java.util.TreeMap;
 
 class TransfersTab extends ScrollPane {
 
+  // A suggestion's card width is fixed per transfer count (every card in one refresh shows the
+  // same number of transfer pairs) rather than measured, so cards are exactly the same size
+  // without depending on JavaFX having already computed real layout bounds.
+  private static final double PAIR_WIDTH = 2 * PitchPlayer.DEFAULT_CARD_WIDTH + 60;
+
   private final Map<Integer, List<TransferSuggestion>> suggestionsByCount;
 
-  private final VBox suggestionsBox = new VBox(8);
+  private final FlowPane suggestionsBox = new FlowPane(16, 16);
 
   TransfersTab(final Squad mySquad, final Map<Strategy, Map<Integer, List<TransferSuggestion>>> transferSuggestionsByStrategy) {
 
     suggestionsByCount = new TreeMap<>(transferSuggestionsByStrategy.getOrDefault(Strategy.SCORE, Map.of()));
 
+    suggestionsBox.setAlignment(Pos.CENTER);
     refreshSuggestions(defaultTransferCount());
 
     final VBox root = new VBox(16,
@@ -38,7 +46,7 @@ class TransfersTab extends ScrollPane {
         new Separator(),
         sectionLabel("Injured / Doubtful"),
         injuredList(mySquad));
-    root.setPadding(new Insets(16));
+    root.setPadding(new Insets(20));
 
     setContent(root);
     setFitToWidth(true);
@@ -84,36 +92,40 @@ class TransfersTab extends ScrollPane {
       return;
     }
 
+    // Every suggestion shown together has the same number of transfer pairs (they're all for this
+    // one transferCount), so a single width fits all of them exactly - no measuring needed.
+    final double cardWidth = transferCount * PAIR_WIDTH;
     for (final TransferSuggestion suggestion : suggestions) {
-      suggestionsBox.getChildren().add(suggestionRow(suggestion));
+      suggestionsBox.getChildren().add(suggestionRow(suggestion, cardWidth));
     }
   }
 
-  private VBox suggestionRow(final TransferSuggestion suggestion) {
+  private VBox suggestionRow(final TransferSuggestion suggestion, final double cardWidth) {
 
-    final StringBuilder out = new StringBuilder();
-    final StringBuilder in = new StringBuilder();
+    final FlowPane transfersRow = new FlowPane(12, 8);
+    transfersRow.setAlignment(Pos.CENTER);
+
     for (final Map.Entry<Player, Player> transfer : suggestion.getTransfers().entrySet()) {
-      if (!out.isEmpty()) {
-        out.append(", ");
-        in.append(", ");
-      }
-      out.append(transfer.getKey().getName());
-      in.append(transfer.getValue().getName());
-    }
+      final Label arrow = new Label("→");
+      arrow.getStyleClass().add("transfer-arrow");
 
-    final Label transferLabel = new Label(String.format("Out: %s  →  In: %s", out, in));
-    transferLabel.setStyle("-fx-font-weight: bold;");
+      final HBox pair = new HBox(8, PitchPlayer.of(transfer.getKey()), arrow, PitchPlayer.of(transfer.getValue()));
+      pair.setAlignment(Pos.CENTER);
+      transfersRow.getChildren().add(pair);
+    }
 
     final Label detailLabel = new Label(String.format(
         "New team points: %d · New team cost: £%.1fm",
         suggestion.getTeam().getPoints(), suggestion.getTeam().getCostNow()));
-    detailLabel.setStyle("-fx-font-size: 11px; -fx-opacity: 0.7;");
+    detailLabel.getStyleClass().add("card-detail");
+    detailLabel.setWrapText(true);
 
-    final VBox row = new VBox(4, transferLabel, detailLabel);
-    row.setPadding(new Insets(8, 12, 8, 12));
-    row.setStyle("-fx-border-color: derive(-fx-color, -20%); -fx-border-radius: 4; "
-        + "-fx-background-radius: 4; -fx-background-color: derive(-fx-color, 8%);");
+    final VBox row = new VBox(8, transfersRow, detailLabel);
+    row.getStyleClass().add("card");
+    row.setAlignment(Pos.CENTER);
+    row.setPrefWidth(cardWidth);
+    row.setMinWidth(cardWidth);
+    row.setMaxWidth(cardWidth);
 
     return row;
   }
@@ -129,19 +141,7 @@ class TransfersTab extends ScrollPane {
         continue;
       }
 
-      final Label nameLabel = new Label(String.format("%s (%s)", player.getName(), player.getStatus()));
-      nameLabel.setStyle("-fx-font-weight: bold;");
-
-      final String chance = player.getChanceOfPlayingNextRound() == null
-          ? "unknown"
-          : player.getChanceOfPlayingNextRound() + "%";
-      final String news = player.getNews() == null || player.getNews().isBlank() ? "No details" : player.getNews();
-
-      final Label detailLabel = new Label(String.format("Chance of playing: %s · %s", chance, news));
-      detailLabel.setStyle("-fx-font-size: 11px; -fx-opacity: 0.7;");
-      detailLabel.setWrapText(true);
-
-      box.getChildren().add(new VBox(2, nameLabel, detailLabel));
+      box.getChildren().add(injuredRow(player));
     }
 
     if (box.getChildren().isEmpty()) {
@@ -151,10 +151,34 @@ class TransfersTab extends ScrollPane {
     return box;
   }
 
+  private HBox injuredRow(final Player player) {
+
+    final Label nameLabel = new Label(String.format("%s (%s)", player.getName(), player.getStatus()));
+    nameLabel.getStyleClass().add("card-title");
+
+    final String chance = player.getChanceOfPlayingNextRound() == null
+        ? "unknown"
+        : player.getChanceOfPlayingNextRound() + "%";
+    final String news = player.getNews() == null || player.getNews().isBlank() ? "No details" : player.getNews();
+
+    final Label detailLabel = new Label(String.format("Chance of playing: %s · %s", chance, news));
+    detailLabel.getStyleClass().add("card-detail");
+    detailLabel.setWrapText(true);
+
+    final VBox info = new VBox(2, nameLabel, detailLabel);
+    info.setAlignment(Pos.CENTER_LEFT);
+
+    final HBox row = new HBox(12, PitchPlayer.of(player), info);
+    row.getStyleClass().add("card");
+    row.setAlignment(Pos.CENTER_LEFT);
+
+    return row;
+  }
+
   private Label sectionLabel(final String text) {
 
     final Label label = new Label(text);
-    label.setStyle("-fx-font-size: 14px; -fx-font-weight: bold;");
+    label.getStyleClass().add("section-label");
     return label;
   }
 }

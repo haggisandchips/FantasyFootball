@@ -29,6 +29,11 @@ public class Player {
 
   private String team;
 
+  // FPL's stable per-team identifier used in shirt image URLs (see ui.PitchPlayer) - distinct from
+  // "team" above (a team id the existing scoring algorithm keys fixtures on - left untouched).
+  @JsonProperty("team_code")
+  private int teamCode;
+
   @Setter(AccessLevel.NONE)
   private BigDecimal costNow;
 

@@ -61,8 +61,11 @@ public class FantasyFootballDesktopApp extends Application {
 
     final TabPane tabPane = new TabPane(mySquadTab, transfersTab, killerTeamTabWrapper);
 
+    final Scene scene = new Scene(tabPane, 1140, 1020);
+    scene.getStylesheets().add(getClass().getResource("/css/app.css").toExternalForm());
+
     stage.setTitle("Fantasy Football");
-    stage.setScene(new Scene(tabPane, 1000, 700));
+    stage.setScene(scene);
     stage.show();
 
     loadSquadThenTransfers(teamAnalysisService, analysisReporter, mySquadTab, transfersTab, killerTeamTab);
@@ -195,7 +198,7 @@ public class FantasyFootballDesktopApp extends Application {
 
     final StackPane pane = new StackPane(new ProgressIndicator());
     pane.setAlignment(Pos.CENTER);
-    pane.setPrefSize(1000, 700);
+    pane.setPrefSize(1140, 1020);
     return pane;
   }
 

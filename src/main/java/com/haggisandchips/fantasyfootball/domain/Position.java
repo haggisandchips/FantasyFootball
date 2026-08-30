@@ -6,13 +6,16 @@ import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
 public enum Position {
-  GOALKEEPER(2),
-  DEFENDER(5),
-  MIDFIELDER(5),
-  FORWARD(3);
+  GOALKEEPER(2, "GK"),
+  DEFENDER(5, "DEF"),
+  MIDFIELDER(5, "MID"),
+  FORWARD(3, "FWD");
 
   @Getter
   private final int number;
+
+  @Getter
+  private final String abbreviation;
 
   @JsonCreator
   public static Position fromValue(int value) {

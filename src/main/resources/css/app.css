@@ -1,0 +1,168 @@
+.root {
+  -bg-dark: #0f1712;
+  -bg-panel: #17231c;
+  -bg-panel-alt: #1c2a21;
+  -pitch-dark: #1b5e20;
+  -pitch-light: #256428;
+  -accent: #00ff87;
+  -accent-dim: #05c76a;
+  -text-light: #eef5ee;
+  -text-muted: #9fb3a4;
+  -border-subtle: #2a3a2f;
+
+  -fx-base: -bg-dark;
+  -fx-background: -bg-dark;
+  -fx-control-inner-background: -bg-panel;
+  -fx-text-fill: -text-light;
+  -fx-font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  -fx-font-size: 13px;
+}
+
+.label {
+  -fx-text-fill: -text-light;
+}
+
+/* Tabs */
+.tab-pane .tab-header-background {
+  -fx-background-color: -bg-dark;
+}
+.tab {
+  -fx-background-color: -bg-panel;
+  -fx-background-radius: 6 6 0 0;
+  -fx-padding: 8 18 8 18;
+}
+.tab .tab-label {
+  -fx-text-fill: -text-muted;
+  -fx-font-weight: bold;
+}
+.tab:selected {
+  -fx-background-color: -bg-panel-alt;
+  -fx-border-color: transparent transparent -accent transparent;
+  -fx-border-width: 0 0 3 0;
+}
+.tab:selected .tab-label {
+  -fx-text-fill: -accent;
+}
+
+/* Buttons */
+.button {
+  -fx-background-color: -bg-panel-alt;
+  -fx-text-fill: -text-light;
+  -fx-background-radius: 6;
+  -fx-border-color: -border-subtle;
+  -fx-border-radius: 6;
+  -fx-padding: 8 18 8 18;
+  -fx-font-weight: bold;
+  -fx-cursor: hand;
+}
+.button:hover {
+  -fx-background-color: -accent-dim;
+  -fx-text-fill: -bg-dark;
+}
+.button:disabled {
+  -fx-opacity: 0.5;
+}
+
+/* Scroll panes */
+.scroll-pane, .scroll-pane .viewport {
+  -fx-background-color: transparent;
+}
+
+/* Progress indicator */
+.progress-indicator .percentage {
+  -fx-fill: -text-light;
+}
+.progress-indicator .indicator {
+  -fx-progress-color: -accent;
+}
+
+/* My Squad header */
+.stat-bar {
+  -fx-padding: 6 0 6 0;
+}
+.stat-caption {
+  -fx-text-fill: -text-muted;
+  -fx-font-size: 11px;
+}
+.stat-value {
+  -fx-text-fill: -text-light;
+  -fx-font-size: 22px;
+  -fx-font-weight: bold;
+}
+
+/* Section labels */
+.section-label {
+  -fx-text-fill: -text-light;
+  -fx-font-size: 15px;
+  -fx-font-weight: bold;
+}
+
+/* Pitch */
+.pitch {
+  -fx-background-color: linear-gradient(to right,
+      -pitch-dark 0%, -pitch-dark 12.5%,
+      -pitch-light 12.5%, -pitch-light 25%,
+      -pitch-dark 25%, -pitch-dark 37.5%,
+      -pitch-light 37.5%, -pitch-light 50%,
+      -pitch-dark 50%, -pitch-dark 62.5%,
+      -pitch-light 62.5%, -pitch-light 75%,
+      -pitch-dark 75%, -pitch-dark 87.5%,
+      -pitch-light 87.5%, -pitch-light 100%);
+  -fx-background-radius: 10 10 0 0;
+  -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.4), 12, 0.2, 0, 4);
+}
+.pitch-line {
+  -fx-stroke: rgba(255,255,255,0.55);
+  -fx-fill: transparent;
+  -fx-stroke-width: 2;
+}
+
+/* Substitutes caption, sitting directly on the extended grass (see ui.PitchView) */
+.dugout-label {
+  -fx-text-fill: -text-muted;
+  -fx-font-size: 10px;
+  -fx-font-weight: bold;
+}
+
+/* Player shirts (see ui.PitchPlayer) */
+.player-name {
+  -fx-text-fill: white;
+  -fx-font-size: 11px;
+  -fx-font-weight: bold;
+  -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.85), 3, 0.6, 0, 1);
+}
+.player-detail {
+  -fx-text-fill: rgba(255,255,255,0.92);
+  -fx-font-size: 9px;
+  -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.85), 3, 0.6, 0, 1);
+}
+.captain-badge {
+  -fx-background-color: -accent;
+  -fx-text-fill: -bg-dark;
+  -fx-font-size: 9px;
+  -fx-font-weight: bold;
+  -fx-background-radius: 20;
+  -fx-padding: 1 4 1 4;
+}
+
+/* Cards (transfers / injured list / killer team) */
+.card {
+  -fx-background-color: -bg-panel;
+  -fx-background-radius: 8;
+  -fx-border-color: -border-subtle;
+  -fx-border-radius: 8;
+  -fx-padding: 10 14 10 14;
+}
+.card-title {
+  -fx-text-fill: -text-light;
+  -fx-font-weight: bold;
+}
+.card-detail {
+  -fx-text-fill: -text-muted;
+  -fx-font-size: 11px;
+}
+.transfer-arrow {
+  -fx-text-fill: -accent;
+  -fx-font-size: 26px;
+  -fx-font-weight: bold;
+}
