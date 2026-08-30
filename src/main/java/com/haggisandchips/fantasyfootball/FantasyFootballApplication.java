@@ -13,8 +13,9 @@ public class FantasyFootballApplication implements CommandLineRunner {
 
   // TODO Log INFO (results) to file as well as console
 
-  // TODO Wire up real squad fetching (currently stubbed in FileSquadProvider) via OAUTH(?!)
-  // TODO ... authentication (https://www.oliverlooney.com/blogs/FPL-APIs-Explained)
+  // Real squad fetching (AuthenticatedSquadProvider) needs FPL_AUTH_ENABLED=true plus a captured
+  // FPL_API_AUTHORIZATION bearer token (see FplSessionAuthClient); otherwise FileSquadProvider's
+  // my-squad.json stub is used.
 
   private final TeamAnalysisService teamAnalysisService;
 

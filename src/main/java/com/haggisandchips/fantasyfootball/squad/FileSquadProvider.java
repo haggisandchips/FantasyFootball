@@ -9,6 +9,7 @@ import com.haggisandchips.fantasyfootball.domain.Team;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
@@ -19,11 +20,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-// Stand-in for authenticated squad fetching (see SquadProvider) - reads a hand-maintained
-// my-squad.json (see my-squad.example.json) until OAuth-style login is in place.
+// Manual stand-in for AuthenticatedSquadProvider - reads a hand-maintained my-squad.json (see
+// my-squad.example.json) so transfer suggestions can be tried out without an FPL login. Active
+// whenever FPL_AUTH_ENABLED isn't set to "true" (see AuthenticatedSquadProvider).
 @Component
 @RequiredArgsConstructor
 @Slf4j
+@ConditionalOnProperty(prefix = "fpl.auth", name = "enabled", havingValue = "false", matchIfMissing = true)
 public class FileSquadProvider implements SquadProvider {
 
   private static final String MY_SQUAD_FILE = "my-squad.json";
