@@ -18,7 +18,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -43,12 +43,21 @@ public class AuthenticatedSquadProvider implements SquadProvider {
 
     final int entryId = fetchEntryId();
     final MyTeamResponse myTeam = fetchMyTeam(entryId);
+    final int overallPoints = fetchOverallPoints(entryId);
 
     final Map<Integer, Player> playersById =
         allPlayers.stream().collect(Collectors.toMap(Player::getFantasyId, player -> player));
 
+    final List<Pick> picksByPosition = new ArrayList<>(myTeam.getPicks());
+    picksByPosition.sort(Comparator.comparingInt(Pick::getPosition));
+
     final List<Player> squadPlayers = new ArrayList<>();
-    for (final Pick pick : myTeam.getPicks()) {
+    final List<Player> startingEleven = new ArrayList<>();
+    final List<Player> substitutes = new ArrayList<>();
+    Player captain = null;
+    Player viceCaptain = null;
+
+    for (final Pick pick : picksByPosition) {
       final Player player = playersById.get(pick.getElement());
       if (player == null) {
         log.warn("Could not find player with id {} in the live player data - skipping", pick.getElement());
@@ -57,6 +66,19 @@ public class AuthenticatedSquadProvider implements SquadProvider {
 
       player.setSellingPrice(toPounds(pick.getSellingPrice()));
       squadPlayers.add(player);
+
+      if (pick.getPosition() <= 11) {
+        startingEleven.add(player);
+      } else {
+        substitutes.add(player);
+      }
+
+      if (pick.isCaptain()) {
+        captain = player;
+      }
+      if (pick.isViceCaptain()) {
+        viceCaptain = player;
+      }
     }
 
     final Map<Position, List<Player>> squadByPosition =
@@ -80,7 +102,9 @@ public class AuthenticatedSquadProvider implements SquadProvider {
       freeTransfers = transfers.getLimit();
     }
 
-    return new Squad(toPounds(transfers.getValue()), toPounds(transfers.getBank()), freeTransfers, team);
+    return new Squad(
+        toPounds(transfers.getValue()), toPounds(transfers.getBank()), freeTransfers, team,
+        startingEleven, substitutes, captain, viceCaptain, overallPoints);
   }
 
   private int fetchEntryId() throws IOException, InterruptedException {
@@ -104,6 +128,14 @@ public class AuthenticatedSquadProvider implements SquadProvider {
     final String body = fplAuthClient.authenticatedGet(uri);
 
     return objectMapper.readValue(body, MyTeamResponse.class);
+  }
+
+  private int fetchOverallPoints(final int entryId) throws IOException, InterruptedException {
+
+    final URI uri = URI.create("https://fantasy.premierleague.com/api/entry/" + entryId + "/");
+    final String body = fplAuthClient.authenticatedGet(uri);
+
+    return objectMapper.readValue(body, EntryResponse.class).getSummaryOverallPoints();
   }
 
   private static BigDecimal toPounds(final int tenths) {
@@ -136,8 +168,23 @@ public class AuthenticatedSquadProvider implements SquadProvider {
 
     private int element;
 
+    private int position;
+
     @JsonProperty("selling_price")
     private int sellingPrice;
+
+    @JsonProperty("is_captain")
+    private boolean isCaptain;
+
+    @JsonProperty("is_vice_captain")
+    private boolean isViceCaptain;
+  }
+
+  @Data
+  private static class EntryResponse {
+
+    @JsonProperty("summary_overall_points")
+    private int summaryOverallPoints;
   }
 
   @Data

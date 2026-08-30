@@ -1,7 +1,8 @@
 {
   "freeTransfers": 1,
   "moneyAvailable": 0.0,
-  "players": [
+  "overallPoints": 82,
+  "startingEleven": [
     "Pickford",
     "Trippier",
     "Van Dijk",
@@ -12,7 +13,9 @@
     "Palmer",
     "Rice",
     "Haaland",
-    "Watkins",
+    "Watkins"
+  ],
+  "substitutes": [
     "Sanchez",
     "Kerkez",
     "Wood",

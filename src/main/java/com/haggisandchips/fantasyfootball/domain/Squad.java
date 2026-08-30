@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Getter
 @RequiredArgsConstructor
@@ -16,4 +17,16 @@ public class Squad {
   private final int freeTransfers;
 
   private final Team team;
+
+  // Display-only pick-team data - the transfer/killer-team algorithms only ever use getTeam().
+  private final List<Player> startingEleven;
+
+  private final List<Player> substitutes;
+
+  private final Player captain;
+
+  private final Player viceCaptain;
+
+  // Season total ("summary_overall_points") - null when unavailable (stub mode has no FPL entry).
+  private final Integer overallPoints;
 }

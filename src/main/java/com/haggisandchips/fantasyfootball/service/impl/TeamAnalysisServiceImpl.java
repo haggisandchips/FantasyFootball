@@ -11,7 +11,6 @@ import com.haggisandchips.fantasyfootball.domain.Strategy;
 import com.haggisandchips.fantasyfootball.domain.Team;
 import com.haggisandchips.fantasyfootball.domain.TransferSuggestion;
 import com.haggisandchips.fantasyfootball.fpl.PlayerDataClient;
-import com.haggisandchips.fantasyfootball.service.AnalysisResult;
 import com.haggisandchips.fantasyfootball.service.TeamAnalysisService;
 import com.haggisandchips.fantasyfootball.squad.SquadProvider;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +37,13 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
 
   private final SquadProvider squadProvider;
 
+  private static Map<Position, List<Player>> groupAvailablePlayers(final List<Player> allPlayers) {
+
+    return allPlayers.stream()
+        .filter(AVAILABLE_PLAYERS)
+        .collect(Collectors.groupingBy(Player::getPosition));
+  }
+
   private static Map<Position, List<Player>> copyAvailablePlayers(
       final Map<Position, List<Player>> availablePlayers) {
 
@@ -59,16 +65,53 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
   }
 
   @Override
-  public AnalysisResult analyse() throws IOException, InterruptedException {
+  public List<Player> fetchAllPlayers() throws IOException, InterruptedException {
 
-    final List<Player> allPlayers = playerDataClient.getAllPlayers();
+    return playerDataClient.getAllPlayers();
+  }
 
-    final Map<Position, List<Player>> availablePlayers =
-        allPlayers.stream()
-            .filter(AVAILABLE_PLAYERS)
-            .collect(Collectors.groupingBy(Player::getPosition));
+  @Override
+  public Squad fetchMySquad(final List<Player> allPlayers) throws IOException, InterruptedException {
 
+    return squadProvider.getMySquad(allPlayers);
+  }
+
+  @Override
+  public Map<Strategy, Map<Integer, List<TransferSuggestion>>> calculateTransferSuggestions(
+      final Squad mySquad, final List<Player> allPlayers) {
+
+    final Map<Position, List<Player>> availablePlayers = groupAvailablePlayers(allPlayers);
+    final Map<Strategy, Map<Integer, List<TransferSuggestion>>> transferSuggestionsByStrategy = new HashMap<>();
+
+    if (mySquad.getFreeTransfers() > 0 || Controls.FREE_TRANSFERS_OVERRIDE > 0) {
+      final List<TransferSuggestion> suggestions =
+          TransferSelector.getTransferSuggestions(mySquad, copyAvailablePlayers(availablePlayers));
+
+      for (final Strategy strategy : Controls.STRATEGIES) {
+        final List<TransferSuggestion> sorted = new ArrayList<>(suggestions);
+        sorted.sort(transferSuggestionComparator(strategy));
+
+        final Map<Integer, List<TransferSuggestion>> byTransferCount =
+            sorted.stream().collect(Collectors.groupingBy(suggestion -> suggestion.getTransfers().size()));
+        byTransferCount.replaceAll(
+            (transferCount, suggestionsForCount) ->
+                suggestionsForCount.stream()
+                    .limit(Controls.MAX_TRANSFER_SUGGESTIONS_LOGGED)
+                    .collect(Collectors.toList()));
+
+        transferSuggestionsByStrategy.put(strategy, byTransferCount);
+      }
+    }
+
+    return transferSuggestionsByStrategy;
+  }
+
+  @Override
+  public Map<Strategy, Team> calculateKillerTeams(final List<Player> allPlayers) {
+
+    final Map<Position, List<Player>> availablePlayers = groupAvailablePlayers(allPlayers);
     final Map<Strategy, Team> killerTeams = new HashMap<>();
+
     for (final Strategy strategy : Controls.STRATEGIES) {
       killerTeams.put(
           strategy,
@@ -78,22 +121,6 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
               Controls.MAX_BUDGET));
     }
 
-    final Squad mySquad = squadProvider.getMySquad(allPlayers);
-
-    final Map<Strategy, List<TransferSuggestion>> transferSuggestionsByStrategy = new HashMap<>();
-    if (mySquad.getFreeTransfers() > 0 || Controls.FREE_TRANSFERS_OVERRIDE > 0) {
-      final List<TransferSuggestion> suggestions =
-          TransferSelector.getTransferSuggestions(mySquad, copyAvailablePlayers(availablePlayers));
-
-      for (final Strategy strategy : Controls.STRATEGIES) {
-        final List<TransferSuggestion> sorted = new ArrayList<>(suggestions);
-        sorted.sort(transferSuggestionComparator(strategy));
-        transferSuggestionsByStrategy.put(
-            strategy,
-            sorted.stream().limit(Controls.MAX_TRANSFER_SUGGESTIONS_LOGGED).collect(Collectors.toList()));
-      }
-    }
-
-    return new AnalysisResult(availablePlayers, killerTeams, mySquad, transferSuggestionsByStrategy);
+    return killerTeams;
   }
 }

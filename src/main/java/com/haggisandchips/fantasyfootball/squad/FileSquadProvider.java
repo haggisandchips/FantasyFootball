@@ -40,7 +40,7 @@ public class FileSquadProvider implements SquadProvider {
     if (!squadFile.exists()) {
       log.warn("{} not found - returning an empty squad. Copy my-squad.example.json to {} to test transfer suggestions with your own team.",
           MY_SQUAD_FILE, MY_SQUAD_FILE);
-      return new Squad(BigDecimal.ZERO, BigDecimal.ZERO, 0, new Team(List.of()));
+      return new Squad(BigDecimal.ZERO, BigDecimal.ZERO, 0, new Team(List.of()), List.of(), List.of(), null, null, null);
     }
 
     final MySquadConfig config = objectMapper.readValue(squadFile, MySquadConfig.class);
@@ -48,19 +48,12 @@ public class FileSquadProvider implements SquadProvider {
     final Map<String, Player> playersByName = allPlayers.stream()
         .collect(Collectors.toMap(player -> player.getName().toLowerCase(), player -> player, (first, second) -> first));
 
-    final List<Player> squadPlayers = new ArrayList<>();
-    for (final String name : config.getPlayers()) {
-      final Player player = playersByName.get(name.toLowerCase());
-      if (player == null) {
-        log.warn("Could not find a player named '{}' in the live player data - skipping", name);
-        continue;
-      }
+    final List<Player> startingEleven = resolvePlayers(config.getStartingEleven(), playersByName);
+    final List<Player> substitutes = resolvePlayers(config.getSubstitutes(), playersByName);
 
-      // The real selling price depends on your purchase history and isn't available without
-      // fetching the authenticated my-team endpoint, so approximate it with the current buy price.
-      player.setSellingPrice(player.getCostNow());
-      squadPlayers.add(player);
-    }
+    final List<Player> squadPlayers = new ArrayList<>();
+    squadPlayers.addAll(startingEleven);
+    squadPlayers.addAll(substitutes);
 
     final Map<Position, List<Player>> squadByPosition =
         squadPlayers.stream().collect(Collectors.groupingBy(Player::getPosition));
@@ -74,7 +67,28 @@ public class FileSquadProvider implements SquadProvider {
     final BigDecimal squadValue =
         squadPlayers.stream().map(Player::getCostNow).reduce(BigDecimal.ZERO, BigDecimal::add);
 
-    return new Squad(squadValue, config.getMoneyAvailable(), config.getFreeTransfers(), myTeam);
+    return new Squad(
+        squadValue, config.getMoneyAvailable(), config.getFreeTransfers(), myTeam,
+        startingEleven, substitutes, null, null, config.getOverallPoints());
+  }
+
+  private List<Player> resolvePlayers(final List<String> names, final Map<String, Player> playersByName) {
+
+    final List<Player> players = new ArrayList<>();
+    for (final String name : names) {
+      final Player player = playersByName.get(name.toLowerCase());
+      if (player == null) {
+        log.warn("Could not find a player named '{}' in the live player data - skipping", name);
+        continue;
+      }
+
+      // The real selling price depends on your purchase history and isn't available without
+      // fetching the authenticated my-team endpoint, so approximate it with the current buy price.
+      player.setSellingPrice(player.getCostNow());
+      players.add(player);
+    }
+
+    return players;
   }
 
   @Data
@@ -84,6 +98,10 @@ public class FileSquadProvider implements SquadProvider {
 
     private BigDecimal moneyAvailable;
 
-    private List<String> players;
+    private List<String> startingEleven;
+
+    private List<String> substitutes;
+
+    private Integer overallPoints;
   }
 }
