@@ -47,22 +47,6 @@ public class Team implements Comparable<Team> {
     return players;
   }
 
-  // TODO Remove if not used once team transfers is implemented
-  public String getPlayerNames() {
-    final StringBuilder playerNames = new StringBuilder();
-    for (final PlayerLine playerLine : getPlayerLines()) {
-      for (final Player player : playerLine.getPlayers()) {
-        if (!playerNames.isEmpty()) {
-          playerNames.append(", ");
-        }
-        playerNames.append(player.getName()).append(" (").append(player.getTeam()).append(")");
-      }
-    }
-
-    return playerNames.toString();
-  }
-
-  // TODO Remove if not used once team transfers is implemented
   public Team makeSubstitutions(final Map<Player, Player> substitutions) {
     final List<PlayerLine> newPlayerLines = new ArrayList<>();
     for (final PlayerLine playerLine : playerLines) {

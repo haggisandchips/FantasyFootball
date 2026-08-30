@@ -55,6 +55,14 @@ public final class Controls {
 
   public static final int MAX_PERMUTATIONS_PER_SCORE = 5;
 
+  public static final int MAXIMUM_PLAYERS_FROM_TEAM = 3;
+
+  public static final int MAX_TRANSFER_SUGGESTIONS_LOGGED = 5;
+
+  // Plan longer term transfer strategies towards a dream team instead of using the real free
+  // transfer count. 0 uses whatever Squad.getFreeTransfers() reports.
+  public static final int FREE_TRANSFERS_OVERRIDE = 0;
+
   private Controls() {
   }
 

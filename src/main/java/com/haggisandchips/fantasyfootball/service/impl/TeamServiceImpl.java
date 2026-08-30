@@ -4,9 +4,12 @@ import com.haggisandchips.fantasyfootball.Controls;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.PlayerLine;
 import com.haggisandchips.fantasyfootball.domain.Position;
+import com.haggisandchips.fantasyfootball.domain.Squad;
 import com.haggisandchips.fantasyfootball.domain.Team;
+import com.haggisandchips.fantasyfootball.domain.TransferSuggestion;
 import com.haggisandchips.fantasyfootball.enums.Strategy;
 import com.haggisandchips.fantasyfootball.helpers.TeamSelector;
+import com.haggisandchips.fantasyfootball.helpers.TransferSelector;
 import com.haggisandchips.fantasyfootball.remote.FantasyClient;
 import com.haggisandchips.fantasyfootball.service.TeamService;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +20,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,8 +34,6 @@ import static com.haggisandchips.fantasyfootball.domain.Status.AVAILABLE;
 @Slf4j
 @Service
 public class TeamServiceImpl implements TeamService {
-
-  private static final int MAXIMUM_PLAYERS_FROM_TEAM = 3;
 
   private static final Predicate<Player> AVAILABLE_PLAYERS = player -> player.getStatus() == AVAILABLE;
 
@@ -86,7 +88,7 @@ public class TeamServiceImpl implements TeamService {
                     if (isKillerTeamAffordable(maxBudget, currentTeam)) {
                       if (killerTeam == null
                           || isBetterKillerTeam(strategy, currentTeam, killerTeam)) {
-                        if (validTeam(currentTeam)) {
+                        if (TeamSelector.isValidTeam(currentTeam)) {
                           killerTeam = currentTeam;
 
                           if (log.isDebugEnabled()) {
@@ -144,22 +146,12 @@ public class TeamServiceImpl implements TeamService {
         && currentTeam.getCostNow().compareTo(killerTeam.getCostNow()) < 0);
   }
 
-  private static boolean validTeam(Team killerTeam) {
-    final Map<String, Integer> teamCounts = new HashMap<>();
+  private static Comparator<TransferSuggestion> transferSuggestionComparator(final Strategy strategy) {
 
-    for (final Player player : killerTeam.getPlayers()) {
-      final String team = player.getTeam();
-      final Integer currentTeamCount = teamCounts.get(team);
-      final int newTeamCount = currentTeamCount == null ? 1 : currentTeamCount + 1;
-
-      if (newTeamCount > MAXIMUM_PLAYERS_FROM_TEAM) {
-        return false;
-      }
-
-      teamCounts.put(team, newTeamCount);
-    }
-
-    return true;
+    return Comparator
+        .comparingInt(TransferSuggestion::getUnavailablePlayersOut)
+        .thenComparing((first, second) -> strategy.compare(first.getTeam(), second.getTeam()))
+        .reversed();
   }
 
   @Override
@@ -190,5 +182,26 @@ public class TeamServiceImpl implements TeamService {
     }
 
     finalKillerTeams.forEach((strategy, team) -> log.info("Killer Team by {}: {}", strategy.name(), team));
+
+    final Squad mySquad = fantasyClient.getMySquad(allPlayers);
+    log.info("Squad Value: {}", mySquad.getSquadValue());
+    log.info("Money Available: {}", mySquad.getMoneyAvailable());
+    log.info("Free Transfers: {}", mySquad.getFreeTransfers());
+    log.info("My Squad: {}", mySquad.getTeam());
+
+    if (mySquad.getFreeTransfers() > 0 || Controls.FREE_TRANSFERS_OVERRIDE > 0) {
+      final List<TransferSuggestion> suggestions =
+          TransferSelector.getTransferSuggestions(mySquad, copyAvailablePlayers(availablePlayers));
+
+      for (final Strategy strategy : Controls.STRATEGIES) {
+        suggestions.sort(transferSuggestionComparator(strategy));
+        log.info("Transfer suggestions by {}:", strategy.name());
+        suggestions.stream()
+            .limit(Controls.MAX_TRANSFER_SUGGESTIONS_LOGGED)
+            .forEach(suggestion -> log.info("{}", suggestion));
+      }
+    } else {
+      log.info("No free transfers available - skipping transfer suggestions");
+    }
   }
 }

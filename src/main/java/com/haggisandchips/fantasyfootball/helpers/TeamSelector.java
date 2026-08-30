@@ -4,9 +4,11 @@ import com.haggisandchips.fantasyfootball.Controls;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.PlayerLine;
 import com.haggisandchips.fantasyfootball.domain.Position;
+import com.haggisandchips.fantasyfootball.domain.Team;
 import com.haggisandchips.fantasyfootball.enums.Strategy;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -103,5 +105,19 @@ public class TeamSelector {
     }
 
     return permutations;
+  }
+
+  public static boolean isValidTeam(final Team team) {
+    final Map<String, Integer> teamCounts = new HashMap<>();
+
+    for (final Player player : team.getPlayers()) {
+      final int newCount = teamCounts.merge(player.getTeam(), 1, Integer::sum);
+
+      if (newCount > Controls.MAXIMUM_PLAYERS_FROM_TEAM) {
+        return false;
+      }
+    }
+
+    return true;
   }
 }

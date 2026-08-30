@@ -21,12 +21,12 @@ public class FantasyFootballApplication implements CommandLineRunner {
   // TODO Remove all warnings
   // TODO Restructure to split out into more focused components
 
-  // TODO Reimplement team transfers (from file), then ...
-  // TODO ... OAUTH(?!) authentication and fetch instead (https://www.oliverlooney.com/blogs/FPL-APIs-Explained)
+  // TODO Wire up real squad fetching (currently stubbed in FantasyClientImpl#getMySquad)
+  // TODO ... via OAUTH(?!) authentication (https://www.oliverlooney.com/blogs/FPL-APIs-Explained)
 
   private final TeamService teamService;
 
-  public static void main(String[] args) {
+  static void main(String[] args) {
 
     SpringApplication.run(FantasyFootballApplication.class, args);
   }
