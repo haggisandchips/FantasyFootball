@@ -1,37 +1,36 @@
+buildscript {
+    ext {
+        springBootVersion = '3.1.2'
+    }
+}
+
 plugins {
     id 'java'
-    id 'idea'
-    id 'io.franzbecker.gradle-lombok' version '2.0'
-    id 'org.springframework.boot' version '2.1.1.RELEASE'
-    id 'io.spring.dependency-management' version '1.0.6.RELEASE'
+    id 'org.springframework.boot' version "${springBootVersion}"
 }
 
 group 'haggis-and-chips'
 version '1.0-SNAPSHOT'
 
-sourceCompatibility = 1.8
+sourceCompatibility = JavaVersion.VERSION_19
+targetCompatibility = JavaVersion.VERSION_19
 
 repositories {
     mavenCentral()
 }
 
-lombok {
-    version = '1.18.4'
-    sha256 = "39f3922deb679b1852af519eb227157ef2dd0a21eec3542c8ce1b45f2df39742"
-}
-
-dependencyManagement {
-    imports {
-        mavenBom 'org.springframework.boot:spring-boot-dependencies:2.1.1.RELEASE'
-    }
-}
-
 dependencies {
 
-    compile 'org.springframework.boot:spring-boot-starter'
-    compile 'org.springframework:spring-web'
+    implementation platform("org.springframework.boot:spring-boot-dependencies:${springBootVersion}")
 
-    compile 'com.fasterxml.jackson.core:jackson-databind'
+    implementation 'org.apache.commons:commons-lang3'
+    implementation 'org.springframework.boot:spring-boot-starter'
+    implementation 'org.springframework:spring-web'
 
-    testCompile 'junit:junit'
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+
+    compileOnly 'org.projectlombok:lombok:1.18.28'
+    annotationProcessor 'org.projectlombok:lombok:1.18.28'
+
+    testImplementation 'junit:junit'
 }

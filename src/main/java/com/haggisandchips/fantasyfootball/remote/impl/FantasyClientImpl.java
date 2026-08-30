@@ -1,28 +1,37 @@
 package com.haggisandchips.fantasyfootball.remote.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.haggisandchips.fantasyfootball.domain.Player;
+import com.haggisandchips.fantasyfootball.domain.Statistics;
 import com.haggisandchips.fantasyfootball.remote.FantasyClient;
-import com.haggisandchips.fantasyfootball.remote.dto.Player;
-import com.haggisandchips.fantasyfootball.remote.dto.Statistics;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.io.File;
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.List;
 
 @Component
+@RequiredArgsConstructor
 public class FantasyClientImpl implements FantasyClient {
 
-  @Autowired private ObjectMapper objectMapper;
+  private final ObjectMapper objectMapper;
 
   @Override
-  public List<Player> getAllPlayers() throws IOException {
+  public List<Player> getAllPlayers() throws IOException, URISyntaxException, InterruptedException {
 
-    // TODO Temporarily parse file
-    final Statistics statistics =
-        objectMapper.readValue(
-            new File("src/test/resources/data/statistics.json"), Statistics.class);
+    final HttpRequest request = HttpRequest.newBuilder(new URI("https://fantasy.premierleague.com/api/bootstrap-static/"))
+        .timeout(Duration.ofSeconds(5L))
+        .GET().build();
+
+    final HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+
+    final Statistics statistics = objectMapper.readValue(response.body(), Statistics.class);
 
     return statistics.getPlayers();
   }

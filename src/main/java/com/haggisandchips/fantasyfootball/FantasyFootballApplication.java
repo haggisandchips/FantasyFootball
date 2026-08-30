@@ -1,19 +1,30 @@
 package com.haggisandchips.fantasyfootball;
 
 import com.haggisandchips.fantasyfootball.service.TeamService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
+@RequiredArgsConstructor
 public class FantasyFootballApplication implements CommandLineRunner {
 
-  private static Logger LOG = LoggerFactory.getLogger(FantasyFootballApplication.class);
+  // TODO Modernise -> Lombok - @Data, @Value, constructors etc
+  // TODO Modernise -> Java 20 (19?)
+  // TODO Modernise -> goJF-ify (subject to above)
+  // TODO Modernise -> latest gradle
+  // TODO Modernise -> streams
+  // TODO Modernise -> lambdas
+  // TODO Log INFO (results) to file as well as console
 
-  @Autowired private TeamService teamService;
+  // TODO Remove all warnings
+  // TODO Restructure to split out into more focused components
+
+  // TODO Reimplement team transfers (from file), then ...
+  // TODO ... OAUTH(?!) authentication and fetch instead (https://www.oliverlooney.com/blogs/FPL-APIs-Explained)
+
+  private final TeamService teamService;
 
   public static void main(String[] args) {
 

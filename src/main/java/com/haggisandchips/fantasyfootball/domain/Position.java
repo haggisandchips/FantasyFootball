@@ -1,13 +1,18 @@
-/** */
-package com.haggisandchips.fantasyfootball.remote.dto;
+package com.haggisandchips.fantasyfootball.domain;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 
+@RequiredArgsConstructor
 public enum Position {
-  GOALKEEPER,
-  DEFENDER,
-  MIDFIELDER,
-  FORWARD;
+  GOALKEEPER(2),
+  DEFENDER(5),
+  MIDFIELDER(5),
+  FORWARD(3);
+
+  @Getter
+  private final int number;
 
   @JsonCreator
   public static Position fromValue(int value) {

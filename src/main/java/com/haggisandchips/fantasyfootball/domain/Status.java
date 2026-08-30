@@ -1,5 +1,7 @@
-/** */
-package com.haggisandchips.fantasyfootball.remote.dto;
+/**
+ *
+ */
+package com.haggisandchips.fantasyfootball.domain;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 

@@ -1,4 +1,4 @@
-package com.haggisandchips.fantasyfootball.remote.dto;
+package com.haggisandchips.fantasyfootball.domain;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AccessLevel;
@@ -6,6 +6,8 @@ import lombok.Data;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+
+import static java.math.RoundingMode.UNNECESSARY;
 
 @Data
 public class Player {
@@ -34,6 +36,9 @@ public class Player {
 
   private BigDecimal form;
 
+  @JsonProperty("points_per_game")
+  private BigDecimal pointsPerGame;
+
   @JsonProperty("selected_by_percent")
   private BigDecimal selectedByPercent;
 
@@ -52,11 +57,6 @@ public class Player {
   @JsonProperty("now_cost")
   public void setCostNow(int costNow) {
 
-    this.costNow = convertMoney(costNow);
-  }
-
-  private BigDecimal convertMoney(int value) {
-
-    return new BigDecimal(value).divide(new BigDecimal(10));
+    this.costNow = new BigDecimal(costNow).divide(new BigDecimal(10), 1, UNNECESSARY);
   }
 }
