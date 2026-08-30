@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        springBootVersion = '3.1.2'
+        springBootVersion = '4.1.1'
     }
 }
 
@@ -9,11 +9,14 @@ plugins {
     id 'org.springframework.boot' version "${springBootVersion}"
 }
 
-group 'haggis-and-chips'
-version '1.0-SNAPSHOT'
+group = 'haggis-and-chips'
+version = '1.0-SNAPSHOT'
 
-sourceCompatibility = JavaVersion.VERSION_19
-targetCompatibility = JavaVersion.VERSION_19
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
 
 repositories {
     mavenCentral()
@@ -29,8 +32,8 @@ dependencies {
 
     implementation 'com.fasterxml.jackson.core:jackson-databind'
 
-    compileOnly 'org.projectlombok:lombok:1.18.28'
-    annotationProcessor 'org.projectlombok:lombok:1.18.28'
+    compileOnly 'org.projectlombok:lombok:1.18.46'
+    annotationProcessor 'org.projectlombok:lombok:1.18.46'
 
     testImplementation 'junit:junit'
 }
