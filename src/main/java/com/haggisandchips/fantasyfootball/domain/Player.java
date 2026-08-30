@@ -52,7 +52,7 @@ public class Player {
   private String news;
 
   @JsonProperty("chance_of_playing_next_round")
-  private int chanceOfPlayingNextRound;
+  private Integer chanceOfPlayingNextRound;
 
   @JsonProperty("now_cost")
   public void setCostNow(int costNow) {
