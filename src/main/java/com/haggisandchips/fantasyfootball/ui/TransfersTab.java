@@ -5,8 +5,14 @@ import com.haggisandchips.fantasyfootball.domain.Squad;
 import com.haggisandchips.fantasyfootball.domain.Status;
 import com.haggisandchips.fantasyfootball.domain.Strategy;
 import com.haggisandchips.fantasyfootball.domain.TransferSuggestion;
+import com.haggisandchips.fantasyfootball.service.TeamAnalysisService;
+import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Alert.AlertType;
+import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
 import javafx.scene.control.ScrollPane;
@@ -19,6 +25,7 @@ import javafx.scene.layout.VBox;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 
 class TransfersTab extends ScrollPane {
@@ -28,11 +35,26 @@ class TransfersTab extends ScrollPane {
   // without depending on JavaFX having already computed real layout bounds.
   private static final double PAIR_WIDTH = 2 * PitchPlayer.DEFAULT_CARD_WIDTH + 60;
 
+  private final Squad mySquad;
+
+  private final TeamAnalysisService teamAnalysisService;
+
+  // Re-runs the whole fetch-squad-then-suggest pipeline (see FantasyFootballDesktopApp) after a
+  // transfer is successfully submitted - the live squad (picks, bank, free transfers) has changed
+  // underneath this tab's in-memory state, so it's simplest to just refetch and rebuild from scratch.
+  private final Runnable onTransferExecuted;
+
   private final Map<Integer, List<TransferSuggestion>> suggestionsByCount;
 
   private final FlowPane suggestionsBox = new FlowPane(16, 16);
 
-  TransfersTab(final Squad mySquad, final Map<Strategy, Map<Integer, List<TransferSuggestion>>> transferSuggestionsByStrategy) {
+  TransfersTab(
+      final Squad mySquad, final Map<Strategy, Map<Integer, List<TransferSuggestion>>> transferSuggestionsByStrategy,
+      final TeamAnalysisService teamAnalysisService, final Runnable onTransferExecuted) {
+
+    this.mySquad = mySquad;
+    this.teamAnalysisService = teamAnalysisService;
+    this.onTransferExecuted = onTransferExecuted;
 
     suggestionsByCount = new TreeMap<>(transferSuggestionsByStrategy.getOrDefault(Strategy.SCORE, Map.of()));
 
@@ -52,13 +74,45 @@ class TransfersTab extends ScrollPane {
     setFitToWidth(true);
   }
 
+  // Picks whichever transfer count's best suggestion is the best overall - highest resulting team
+  // score, ties broken by lowest team cost, further ties broken by fewer transfers - rather than
+  // always defaulting to a fixed count. Each count's list is already sorted best-first (see
+  // TeamAnalysisServiceImpl.transferSuggestionComparator), so only its head needs comparing.
   private int defaultTransferCount() {
 
-    if (suggestionsByCount.containsKey(2)) {
-      return 2;
+    Integer bestCount = null;
+    TransferSuggestion best = null;
+
+    for (final Map.Entry<Integer, List<TransferSuggestion>> entry : suggestionsByCount.entrySet()) {
+      if (entry.getValue().isEmpty()) {
+        continue;
+      }
+
+      final TransferSuggestion candidate = entry.getValue().get(0);
+      if (best == null || isBetter(candidate, entry.getKey(), best, bestCount)) {
+        best = candidate;
+        bestCount = entry.getKey();
+      }
     }
 
-    return suggestionsByCount.keySet().stream().findFirst().orElse(0);
+    return bestCount != null ? bestCount : suggestionsByCount.keySet().stream().findFirst().orElse(0);
+  }
+
+  private static boolean isBetter(
+      final TransferSuggestion candidate, final int candidateCount,
+      final TransferSuggestion current, final int currentCount) {
+
+    final int pointsCompare = Integer.compare(candidate.getTeam().getPoints(), current.getTeam().getPoints());
+    if (pointsCompare != 0) {
+      return pointsCompare > 0;
+    }
+
+    final int costCompare = candidate.getTeam().getCostNow().compareTo(current.getTeam().getCostNow());
+    if (costCompare != 0) {
+      return costCompare < 0;
+    }
+
+    return candidateCount < currentCount;
   }
 
   private HBox transferCountToggle() {
@@ -127,7 +181,81 @@ class TransfersTab extends ScrollPane {
     row.setMinWidth(cardWidth);
     row.setMaxWidth(cardWidth);
 
+    if (mySquad.getTransferContext() != null) {
+      row.getChildren().add(executeControl(suggestion));
+    }
+
     return row;
+  }
+
+  // Only shown when mySquad.getTransferContext() is set - i.e. this squad came from a real,
+  // logged-in FPL account, so there's an actual entry to submit the transfer to.
+  private VBox executeControl(final TransferSuggestion suggestion) {
+
+    final Button executeButton = new Button("Make this transfer");
+    final Label statusLabel = new Label();
+    statusLabel.getStyleClass().add("card-detail");
+    statusLabel.setWrapText(true);
+
+    executeButton.setOnAction(event -> {
+      if (!confirmed(suggestion)) {
+        return;
+      }
+
+      executeButton.setDisable(true);
+      statusLabel.setText("Submitting...");
+
+      final Task<Void> submitTask = new Task<>() {
+        @Override
+        protected Void call() throws Exception {
+
+          teamAnalysisService.executeTransfer(mySquad, suggestion);
+          return null;
+        }
+      };
+
+      submitTask.setOnSucceeded(e -> {
+        statusLabel.setText("Submitted to FPL.");
+        new Alert(AlertType.INFORMATION, "Transfer submitted successfully.").showAndWait();
+        onTransferExecuted.run();
+      });
+
+      submitTask.setOnFailed(e -> {
+        executeButton.setDisable(false);
+        final String message = submitTask.getException().getMessage();
+        statusLabel.setText("Failed: " + message);
+        new Alert(AlertType.ERROR, "Transfer submission failed:\n\n" + message).showAndWait();
+      });
+
+      Thread.ofVirtual().name("submit-transfer").start(submitTask);
+    });
+
+    final VBox box = new VBox(6, executeButton, statusLabel);
+    box.setAlignment(Pos.CENTER);
+    return box;
+  }
+
+  private boolean confirmed(final TransferSuggestion suggestion) {
+
+    final StringBuilder summary = new StringBuilder();
+    for (final Map.Entry<Player, Player> transfer : suggestion.getTransfers().entrySet()) {
+      if (!summary.isEmpty()) {
+        summary.append("\n");
+      }
+      summary.append(String.format(
+          "OUT: %s (£%.1fm) -> IN: %s (£%.1fm)",
+          transfer.getKey().getName(), transfer.getKey().getSellingPrice(),
+          transfer.getValue().getName(), transfer.getValue().getCostNow()));
+    }
+
+    final Alert confirmation = new Alert(AlertType.CONFIRMATION, String.format(
+        "This will submit the following transfer(s) directly to your live FPL team for gameweek %d "
+            + "and cannot be undone through this app:\n\n%s",
+        mySquad.getTransferContext().currentEvent(), summary));
+    confirmation.setHeaderText("Confirm transfer");
+
+    final Optional<ButtonType> result = confirmation.showAndWait();
+    return result.isPresent() && result.get() == ButtonType.OK;
   }
 
   private VBox injuredList(final Squad squad) {

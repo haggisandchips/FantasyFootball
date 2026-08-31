@@ -1,6 +1,7 @@
 package com.haggisandchips.fantasyfootball.ui;
 
 import com.haggisandchips.fantasyfootball.FantasyFootballApplication;
+import com.haggisandchips.fantasyfootball.calculation.TransferSearchProgressListener;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.Squad;
 import com.haggisandchips.fantasyfootball.domain.Strategy;
@@ -14,10 +15,12 @@ import javafx.concurrent.Task;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Label;
+import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.WebApplicationType;
@@ -122,7 +125,7 @@ public class FantasyFootballDesktopApp extends Application {
         stage.setTitle("Fantasy Football - " + mySquad.getTeamName());
       }
 
-      loadTransferSuggestions(teamAnalysisService, analysisReporter, transfersTab, mySquad, allPlayers);
+      loadTransferSuggestions(stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, mySquad, allPlayers);
     });
 
     squadTask.setOnFailed(event -> {
@@ -135,21 +138,35 @@ public class FantasyFootballDesktopApp extends Application {
   }
 
   private void loadTransferSuggestions(
-      final TeamAnalysisService teamAnalysisService, final AnalysisReporter analysisReporter,
-      final Tab transfersTab, final Squad mySquad, final List<Player> allPlayers) {
+      final Stage stage, final TeamAnalysisService teamAnalysisService, final AnalysisReporter analysisReporter,
+      final Tab mySquadTab, final Tab transfersTab, final Squad mySquad, final List<Player> allPlayers) {
 
     final Task<Map<Strategy, Map<Integer, List<TransferSuggestion>>>> transfersTask = new Task<>() {
       @Override
       protected Map<Strategy, Map<Integer, List<TransferSuggestion>>> call() {
 
-        return teamAnalysisService.calculateTransferSuggestions(mySquad, allPlayers);
+        final TransferSearchProgressListener progressListener = (transferBudget, evaluated, total) -> {
+          updateMessage(String.format(
+              "Evaluating %d-transfer combinations: %,d / %,d", transferBudget, evaluated, total));
+          updateProgress(evaluated, Math.max(total, 1));
+        };
+
+        return teamAnalysisService.calculateTransferSuggestions(mySquad, allPlayers, progressListener);
       }
     };
+
+    transfersTab.setContent(transferProgressPane(transfersTask));
 
     transfersTask.setOnSucceeded(event -> {
       final Map<Strategy, Map<Integer, List<TransferSuggestion>>> transferSuggestions = transfersTask.getValue();
       analysisReporter.reportTransferSuggestions(transferSuggestions);
-      transfersTab.setContent(new TransfersTab(mySquad, transferSuggestions));
+
+      // A submitted transfer changes the live squad (picks, bank, free transfers) - re-fetch and
+      // recalculate everything from scratch rather than trying to patch the in-memory state.
+      final Runnable onTransferExecuted = () ->
+          loadMySquad(stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, allPlayers);
+
+      transfersTab.setContent(new TransfersTab(mySquad, transferSuggestions, teamAnalysisService, onTransferExecuted));
     });
 
     transfersTask.setOnFailed(event ->
@@ -201,6 +218,26 @@ public class FantasyFootballDesktopApp extends Application {
   private static StackPane loadingPane() {
 
     final StackPane pane = new StackPane(new ProgressIndicator());
+    pane.setAlignment(Pos.CENTER);
+    pane.setPrefSize(1140, 1020);
+    return pane;
+  }
+
+  // Bound directly to the task's own progress/message properties (rather than polling or manually
+  // marshalling updates onto the FX thread) - Task already does that marshalling for us.
+  private static StackPane transferProgressPane(final Task<?> task) {
+
+    final ProgressBar progressBar = new ProgressBar();
+    progressBar.progressProperty().bind(task.progressProperty());
+    progressBar.setPrefWidth(360);
+
+    final Label messageLabel = new Label();
+    messageLabel.textProperty().bind(task.messageProperty());
+
+    final VBox content = new VBox(12, progressBar, messageLabel);
+    content.setAlignment(Pos.CENTER);
+
+    final StackPane pane = new StackPane(content);
     pane.setAlignment(Pos.CENTER);
     pane.setPrefSize(1140, 1020);
     return pane;

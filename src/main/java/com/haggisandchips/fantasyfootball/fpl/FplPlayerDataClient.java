@@ -23,8 +23,24 @@ public class FplPlayerDataClient implements PlayerDataClient {
   @Override
   public List<Player> getAllPlayers() throws IOException, InterruptedException {
 
-    final String body = httpGateway.get(BOOTSTRAP_STATIC);
+    return fetchStatistics().getPlayers();
+  }
 
-    return objectMapper.readValue(body, Statistics.class).getPlayers();
+  @Override
+  public int getCurrentTransferEvent() throws IOException, InterruptedException {
+
+    return fetchStatistics().getEvents().stream()
+        .filter(Statistics.Event::isNext)
+        .findFirst()
+        .map(Statistics.Event::getId)
+        .orElseThrow(() -> new IOException(
+            "Could not determine the gameweek currently open for transfers - no event in bootstrap-static "
+                + "is marked \"is_next\""));
+  }
+
+  private Statistics fetchStatistics() throws IOException, InterruptedException {
+
+    final String body = httpGateway.get(BOOTSTRAP_STATIC);
+    return objectMapper.readValue(body, Statistics.class);
   }
 }

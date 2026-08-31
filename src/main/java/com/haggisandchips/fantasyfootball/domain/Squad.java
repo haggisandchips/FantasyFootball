@@ -32,4 +32,8 @@ public class Squad {
 
   // FPL entry name (e.g. "Haggis and Chips FC") - null when unavailable (stub mode, killer team).
   private final String teamName;
+
+  // Set only when this squad came from a real, logged-in FPL account - lets the UI offer to
+  // actually submit a suggested transfer. Null in stub mode and for the killer team's scratch squad.
+  private final TransferContext transferContext;
 }

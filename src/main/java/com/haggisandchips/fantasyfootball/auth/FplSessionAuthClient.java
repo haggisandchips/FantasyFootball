@@ -30,6 +30,22 @@ public class FplSessionAuthClient implements FplAuthClient {
   @Override
   public String authenticatedGet(final URI uri) throws IOException, InterruptedException {
 
+    final HttpRequest request = authenticatedRequestBuilder(uri).GET().build();
+    return send(request);
+  }
+
+  @Override
+  public String authenticatedPost(final URI uri, final String jsonBody) throws IOException, InterruptedException {
+
+    final HttpRequest request = authenticatedRequestBuilder(uri)
+        .header("Content-Type", "application/json")
+        .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+        .build();
+    return send(request);
+  }
+
+  private HttpRequest.Builder authenticatedRequestBuilder(final URI uri) throws IOException {
+
     final String authorization = apiAuthConfig.getAuthorization();
     if (authorization == null || authorization.isBlank()) {
       throw new IOException(
@@ -38,18 +54,24 @@ public class FplSessionAuthClient implements FplAuthClient {
               + "its X-Api-Authorization request header value into FPL_API_AUTHORIZATION");
     }
 
-    final HttpRequest request = HttpRequest.newBuilder(uri)
+    return HttpRequest.newBuilder(uri)
         .timeout(TIMEOUT)
-        .header("X-Api-Authorization", authorization)
-        .GET()
-        .build();
+        .header("X-Api-Authorization", authorization);
+  }
+
+  private String send(final HttpRequest request) throws IOException, InterruptedException {
 
     final HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
     if (response.statusCode() != 200) {
+      // Body included (not just the status) because a rejected mutating request - e.g. a transfer
+      // FPL considers invalid - explains why in its response body, not just the status code.
+      final String expiryHint = response.statusCode() == 401 || response.statusCode() == 403
+          ? " - the captured token has likely expired; capture a fresh FPL_API_AUTHORIZATION from your browser"
+          : "";
       throw new IOException(String.format(
-          "Authenticated request to %s failed with status %d - the captured token has likely expired; "
-              + "capture a fresh FPL_API_AUTHORIZATION from your browser", uri, response.statusCode()));
+          "Authenticated request to %s failed with status %d: %s%s",
+          request.uri(), response.statusCode(), response.body(), expiryHint));
     }
 
     return response.body();

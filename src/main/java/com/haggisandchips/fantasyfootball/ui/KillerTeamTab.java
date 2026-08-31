@@ -61,7 +61,7 @@ class KillerTeamTab extends BorderPane {
 
     final Squad squad = new Squad(
         team.getCostNow(), Controls.MAX_BUDGET.subtract(team.getCostNow()), 0, team,
-        picked.startingEleven(), picked.substitutes(), null, null, team.getPoints(), null);
+        picked.startingEleven(), picked.substitutes(), null, null, team.getPoints(), null, null);
 
     setTop(null);
     setCenter(new MySquadTab(squad));

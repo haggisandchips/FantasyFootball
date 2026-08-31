@@ -21,11 +21,15 @@ import java.util.Set;
 @Slf4j
 public final class TransferSelector {
 
+  // How often to log search progress, as a fraction of the upfront combination count.
+  private static final int PROGRESS_LOG_STEPS = 10;
+
   private TransferSelector() {
   }
 
   public static List<TransferSuggestion> getTransferSuggestions(
-      final Squad mySquad, final Map<Position, List<Player>> availablePlayers) {
+      final Squad mySquad, final Map<Position, List<Player>> availablePlayers,
+      final TransferSearchProgressListener progressListener) {
 
     final Team myTeam = mySquad.getTeam();
     final List<Player> myPlayers = myTeam.getPlayers();
@@ -52,10 +56,18 @@ public final class TransferSelector {
         continue;
       }
 
-      log.debug("Calculating transfer suggestions using {} transfer(s)", transferBudget);
+      final long totalCombinations = countCandidateTransfers(myPlayers, transferBudget, availablePlayers);
+      log.info("Calculating transfer suggestions using {} transfer(s) - {} candidate combination(s) to evaluate",
+          transferBudget, totalCombinations);
+      progressListener.onProgress(transferBudget, 0, totalCombinations);
 
       final PermutationGenerator<Player> generator =
           new PermutationGeneratorImpl<>(myPlayers, transferBudget);
+
+      final long progressStep = Math.max(1, totalCombinations / PROGRESS_LOG_STEPS);
+      final int suggestionsBefore = suggestions.size();
+      long evaluated = 0;
+      long nextProgressLogAt = progressStep;
 
       while (generator.hasMore()) {
         final List<Player> playersOut = generator.getNext();
@@ -63,6 +75,14 @@ public final class TransferSelector {
         final List<Map<Player, Player>> candidateTransfers = new ArrayList<>();
         buildCandidateTransfers(
             playersOut, availablePlayers, candidateTransfers, new HashMap<>(), new ArrayList<>(myPlayers));
+
+        evaluated += candidateTransfers.size();
+        if (evaluated >= nextProgressLogAt) {
+          log.info("Progress: {}/{} candidate combinations evaluated ({}%)",
+              evaluated, totalCombinations, Math.min(100, evaluated * 100 / totalCombinations));
+          progressListener.onProgress(transferBudget, evaluated, totalCombinations);
+          nextProgressLogAt += progressStep;
+        }
 
         for (final Map<Player, Player> transfers : candidateTransfers) {
           if (!isAffordable(transfers, moneyAvailable)) {
@@ -76,9 +96,35 @@ public final class TransferSelector {
           }
         }
       }
+
+      log.info("Finished evaluating {} transfer(s): {} candidate combination(s), {} suggestion(s) found",
+          transferBudget, evaluated, suggestions.size() - suggestionsBefore);
+      progressListener.onProgress(transferBudget, evaluated, totalCombinations);
     }
 
     return suggestions;
+  }
+
+  // Upper bound on how many candidate transfer combinations buildCandidateTransfers will produce
+  // for this transfer budget: for each combination of players out, the product of how many
+  // available players occupy each of their positions (ignores the few exclusions
+  // buildCandidateTransfers applies - e.g. a player already in the squad - so this can slightly
+  // over-count, which is fine for a progress denominator).
+  private static long countCandidateTransfers(
+      final List<Player> myPlayers, final int transferBudget, final Map<Position, List<Player>> availablePlayers) {
+
+    final PermutationGenerator<Player> generator = new PermutationGeneratorImpl<>(myPlayers, transferBudget);
+    long total = 0;
+
+    while (generator.hasMore()) {
+      long comboCount = 1;
+      for (final Player playerOut : generator.getNext()) {
+        comboCount *= availablePlayers.getOrDefault(playerOut.getPosition(), List.of()).size();
+      }
+      total += comboCount;
+    }
+
+    return total;
   }
 
   private static boolean isAffordable(final Map<Player, Player> transfers, final BigDecimal moneyAvailable) {

@@ -63,6 +63,13 @@ public final class Controls {
   // transfer count. 0 uses whatever Squad.getFreeTransfers() reports.
   public static final int FREE_TRANSFERS_OVERRIDE = 0;
 
+  // FPL reports no per-transfer point cost while a wildcard/free hit chip is active (or during the
+  // one-off pre-deadline-1 grace period) - real free transfers are effectively unlimited then, but
+  // TransferSelector's permutation search over N simultaneous swaps blows up combinatorially, so
+  // this caps how many it's asked to consider at once rather than trying up to a full 15-man rebuild
+  // (that's what the Killer Team tab is for).
+  public static final int UNLIMITED_TRANSFER_SUGGESTION_BUDGET = 2;
+
   private Controls() {
   }
 

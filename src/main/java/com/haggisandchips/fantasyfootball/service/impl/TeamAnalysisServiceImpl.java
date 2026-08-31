@@ -3,6 +3,7 @@ package com.haggisandchips.fantasyfootball.service.impl;
 import com.haggisandchips.fantasyfootball.Controls;
 import com.haggisandchips.fantasyfootball.calculation.KillerTeamFinder;
 import com.haggisandchips.fantasyfootball.calculation.TeamSelector;
+import com.haggisandchips.fantasyfootball.calculation.TransferSearchProgressListener;
 import com.haggisandchips.fantasyfootball.calculation.TransferSelector;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.Position;
@@ -13,6 +14,7 @@ import com.haggisandchips.fantasyfootball.domain.TransferSuggestion;
 import com.haggisandchips.fantasyfootball.fpl.PlayerDataClient;
 import com.haggisandchips.fantasyfootball.service.TeamAnalysisService;
 import com.haggisandchips.fantasyfootball.squad.SquadProvider;
+import com.haggisandchips.fantasyfootball.squad.TransferExecutor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +24,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -36,6 +39,9 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
   private final PlayerDataClient playerDataClient;
 
   private final SquadProvider squadProvider;
+
+  // Empty in stub mode (FPL_AUTH_ENABLED not "true"), where there's no live account to submit to.
+  private final Optional<TransferExecutor> transferExecutor;
 
   private static Map<Position, List<Player>> groupAvailablePlayers(final List<Player> allPlayers) {
 
@@ -78,14 +84,14 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
 
   @Override
   public Map<Strategy, Map<Integer, List<TransferSuggestion>>> calculateTransferSuggestions(
-      final Squad mySquad, final List<Player> allPlayers) {
+      final Squad mySquad, final List<Player> allPlayers, final TransferSearchProgressListener progressListener) {
 
     final Map<Position, List<Player>> availablePlayers = groupAvailablePlayers(allPlayers);
     final Map<Strategy, Map<Integer, List<TransferSuggestion>>> transferSuggestionsByStrategy = new HashMap<>();
 
     if (mySquad.getFreeTransfers() > 0 || Controls.FREE_TRANSFERS_OVERRIDE > 0) {
       final List<TransferSuggestion> suggestions =
-          TransferSelector.getTransferSuggestions(mySquad, copyAvailablePlayers(availablePlayers));
+          TransferSelector.getTransferSuggestions(mySquad, copyAvailablePlayers(availablePlayers), progressListener);
 
       for (final Strategy strategy : Controls.STRATEGIES) {
         final List<TransferSuggestion> sorted = new ArrayList<>(suggestions);
@@ -122,5 +128,19 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
     }
 
     return killerTeams;
+  }
+
+  @Override
+  public void executeTransfer(final Squad mySquad, final TransferSuggestion suggestion)
+      throws IOException, InterruptedException {
+
+    if (mySquad.getTransferContext() == null) {
+      throw new IllegalStateException(
+          "This squad has no live FPL entry to submit a transfer to (FPL_AUTH_ENABLED must be true)");
+    }
+
+    transferExecutor
+        .orElseThrow(() -> new IllegalStateException("Transfer execution isn't available - FPL_AUTH_ENABLED must be true"))
+        .execute(mySquad.getTransferContext(), suggestion);
   }
 }

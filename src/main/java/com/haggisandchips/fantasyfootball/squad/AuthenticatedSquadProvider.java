@@ -2,12 +2,15 @@ package com.haggisandchips.fantasyfootball.squad;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.haggisandchips.fantasyfootball.Controls;
 import com.haggisandchips.fantasyfootball.auth.FplAuthClient;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.PlayerLine;
 import com.haggisandchips.fantasyfootball.domain.Position;
 import com.haggisandchips.fantasyfootball.domain.Squad;
 import com.haggisandchips.fantasyfootball.domain.Team;
+import com.haggisandchips.fantasyfootball.domain.TransferContext;
+import com.haggisandchips.fantasyfootball.fpl.PlayerDataClient;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +38,8 @@ public class AuthenticatedSquadProvider implements SquadProvider {
   private static final URI ME_URI = URI.create("https://fantasy.premierleague.com/api/me/");
 
   private final FplAuthClient fplAuthClient;
+
+  private final PlayerDataClient playerDataClient;
 
   private final ObjectMapper objectMapper;
 
@@ -92,19 +97,12 @@ public class AuthenticatedSquadProvider implements SquadProvider {
     final Team team = new Team(playerLines);
 
     final Transfers transfers = myTeam.getTransfers();
-    final int freeTransfers;
-    if (transfers.getLimit() == null) {
-      // null typically means a wildcard/free hit is active this gameweek, i.e. no meaningful
-      // transfer budget to suggest swaps within - treat that the same as having none.
-      log.info("FPL reports no transfer limit (a chip is likely active) - treating free transfers as 0");
-      freeTransfers = 0;
-    } else {
-      freeTransfers = transfers.getLimit();
-    }
+    final int freeTransfers = resolveFreeTransfers(transfers);
 
     return new Squad(
         toPounds(transfers.getValue()), toPounds(transfers.getBank()), freeTransfers, team,
-        startingEleven, substitutes, captain, viceCaptain, entry.getSummaryOverallPoints(), entry.getName());
+        startingEleven, substitutes, captain, viceCaptain, entry.getSummaryOverallPoints(), entry.getName(),
+        new TransferContext(entryId, playerDataClient.getCurrentTransferEvent()));
   }
 
   private int fetchEntryId() throws IOException, InterruptedException {
@@ -136,6 +134,22 @@ public class AuthenticatedSquadProvider implements SquadProvider {
     final String body = fplAuthClient.authenticatedGet(uri);
 
     return objectMapper.readValue(body, EntryResponse.class);
+  }
+
+  private static int resolveFreeTransfers(final Transfers transfers) {
+
+    if (transfers.getLimit() != null) {
+      return transfers.getLimit();
+    }
+
+    if ("unlimited".equals(transfers.getStatus())) {
+      log.info("FPL reports unlimited transfers this gameweek (wildcard/free hit active, or the pre-deadline-1 "
+          + "grace period) - capping the suggestion search at {} simultaneous swaps", Controls.UNLIMITED_TRANSFER_SUGGESTION_BUDGET);
+      return Controls.UNLIMITED_TRANSFER_SUGGESTION_BUDGET;
+    }
+
+    log.warn("FPL reports transfer status '{}' with no limit - treating free transfers as 0", transfers.getStatus());
+    return 0;
   }
 
   private static BigDecimal toPounds(final int tenths) {
@@ -193,6 +207,11 @@ public class AuthenticatedSquadProvider implements SquadProvider {
   private static class Transfers {
 
     private Integer limit;
+
+    // "cost" (normal - limit free transfers, hits beyond that cost points), "unlimited" (wildcard
+    // or free hit chip active, or the one-off pre-deadline-1 grace period - no per-transfer cost
+    // regardless of count, and limit is null).
+    private String status;
 
     private int bank;
 

@@ -8,4 +8,6 @@ import java.net.URI;
 public interface FplAuthClient {
 
   String authenticatedGet(URI uri) throws IOException, InterruptedException;
+
+  String authenticatedPost(URI uri, String jsonBody) throws IOException, InterruptedException;
 }

@@ -12,4 +12,17 @@ class Statistics {
 
   @JsonProperty("elements")
   private List<Player> players;
+
+  private List<Event> events;
+
+  @Data
+  static class Event {
+
+    private int id;
+
+    // True for exactly one event: the next gameweek whose deadline hasn't passed yet, i.e. the
+    // one transfers submitted right now actually apply to.
+    @JsonProperty("is_next")
+    private boolean isNext;
+  }
 }

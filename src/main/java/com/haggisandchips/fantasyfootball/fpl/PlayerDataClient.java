@@ -9,4 +9,8 @@ import java.util.List;
 public interface PlayerDataClient {
 
   List<Player> getAllPlayers() throws IOException, InterruptedException;
+
+  // The gameweek a transfer submitted right now would actually apply to - the next one whose
+  // deadline hasn't passed (bootstrap-static's "is_next" flag), not necessarily the last one played.
+  int getCurrentTransferEvent() throws IOException, InterruptedException;
 }
