@@ -19,6 +19,7 @@ import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
+import javafx.scene.image.Image;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
@@ -35,6 +36,9 @@ import java.util.Map;
 // same beans the console runner used, and stop() closes it again on window close.
 @Slf4j
 public class FantasyFootballDesktopApp extends Application {
+
+  // Every size the OS might pick from for the title bar, taskbar and alt-tab switcher.
+  private static final List<String> ICON_SIZES = List.of("16", "24", "32", "48", "64", "128", "256");
 
   private ConfigurableApplicationContext springContext;
 
@@ -69,6 +73,7 @@ public class FantasyFootballDesktopApp extends Application {
 
     stage.setTitle("Fantasy Football");
     stage.setScene(scene);
+    stage.getIcons().addAll(loadIcons());
     stage.show();
 
     loadSquadThenTransfers(stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, killerTeamTab);
@@ -213,6 +218,14 @@ public class FantasyFootballDesktopApp extends Application {
 
     log.error("Analysis step failed", error);
     return error.getMessage();
+  }
+
+  private static List<Image> loadIcons() {
+
+    return ICON_SIZES.stream()
+        .map(size -> new Image(FantasyFootballDesktopApp.class.getResourceAsStream(
+            "/icons/icon_" + size + "x" + size + ".png")))
+        .toList();
   }
 
   private static StackPane loadingPane() {
