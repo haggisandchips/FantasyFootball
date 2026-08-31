@@ -108,7 +108,6 @@
       -pitch-light 62.5%, -pitch-light 75%,
       -pitch-dark 75%, -pitch-dark 87.5%,
       -pitch-light 87.5%, -pitch-light 100%);
-  -fx-background-radius: 10 10 0 0;
   -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.4), 12, 0.2, 0, 4);
 }
 .pitch-line {
