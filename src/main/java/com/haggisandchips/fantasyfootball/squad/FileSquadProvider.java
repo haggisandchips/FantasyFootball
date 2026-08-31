@@ -40,7 +40,7 @@ public class FileSquadProvider implements SquadProvider {
     if (!squadFile.exists()) {
       log.warn("{} not found - returning an empty squad. Copy my-squad.example.json to {} to test transfer suggestions with your own team.",
           MY_SQUAD_FILE, MY_SQUAD_FILE);
-      return new Squad(BigDecimal.ZERO, BigDecimal.ZERO, 0, new Team(List.of()), List.of(), List.of(), null, null, null);
+      return new Squad(BigDecimal.ZERO, BigDecimal.ZERO, 0, new Team(List.of()), List.of(), List.of(), null, null, null, null);
     }
 
     final MySquadConfig config = objectMapper.readValue(squadFile, MySquadConfig.class);
@@ -69,7 +69,7 @@ public class FileSquadProvider implements SquadProvider {
 
     return new Squad(
         squadValue, config.getMoneyAvailable(), config.getFreeTransfers(), myTeam,
-        startingEleven, substitutes, null, null, config.getOverallPoints());
+        startingEleven, substitutes, null, null, config.getOverallPoints(), config.getTeamName());
   }
 
   private List<Player> resolvePlayers(final List<String> names, final Map<String, Player> playersByName) {
@@ -103,5 +103,7 @@ public class FileSquadProvider implements SquadProvider {
     private List<String> substitutes;
 
     private Integer overallPoints;
+
+    private String teamName;
   }
 }

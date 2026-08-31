@@ -68,11 +68,11 @@ public class FantasyFootballDesktopApp extends Application {
     stage.setScene(scene);
     stage.show();
 
-    loadSquadThenTransfers(teamAnalysisService, analysisReporter, mySquadTab, transfersTab, killerTeamTab);
+    loadSquadThenTransfers(stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, killerTeamTab);
   }
 
   private void loadSquadThenTransfers(
-      final TeamAnalysisService teamAnalysisService, final AnalysisReporter analysisReporter,
+      final Stage stage, final TeamAnalysisService teamAnalysisService, final AnalysisReporter analysisReporter,
       final Tab mySquadTab, final Tab transfersTab, final KillerTeamTab killerTeamTab) {
 
     final Task<List<Player>> allPlayersTask = new Task<>() {
@@ -88,7 +88,7 @@ public class FantasyFootballDesktopApp extends Application {
       analysisReporter.reportAllPlayers(allPlayers);
 
       wireKillerTeamCalculation(teamAnalysisService, analysisReporter, killerTeamTab, allPlayers);
-      loadMySquad(teamAnalysisService, analysisReporter, mySquadTab, transfersTab, allPlayers);
+      loadMySquad(stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, allPlayers);
     });
 
     allPlayersTask.setOnFailed(event -> {
@@ -102,7 +102,7 @@ public class FantasyFootballDesktopApp extends Application {
   }
 
   private void loadMySquad(
-      final TeamAnalysisService teamAnalysisService, final AnalysisReporter analysisReporter,
+      final Stage stage, final TeamAnalysisService teamAnalysisService, final AnalysisReporter analysisReporter,
       final Tab mySquadTab, final Tab transfersTab, final List<Player> allPlayers) {
 
     final Task<Squad> squadTask = new Task<>() {
@@ -117,6 +117,10 @@ public class FantasyFootballDesktopApp extends Application {
       final Squad mySquad = squadTask.getValue();
       analysisReporter.reportSquad(mySquad);
       mySquadTab.setContent(new MySquadTab(mySquad));
+
+      if (mySquad.getTeamName() != null) {
+        stage.setTitle("Fantasy Football - " + mySquad.getTeamName());
+      }
 
       loadTransferSuggestions(teamAnalysisService, analysisReporter, transfersTab, mySquad, allPlayers);
     });

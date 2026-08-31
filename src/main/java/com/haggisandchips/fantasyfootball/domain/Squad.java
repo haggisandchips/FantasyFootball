@@ -29,4 +29,7 @@ public class Squad {
 
   // Season total ("summary_overall_points") - null when unavailable (stub mode has no FPL entry).
   private final Integer overallPoints;
+
+  // FPL entry name (e.g. "Haggis and Chips FC") - null when unavailable (stub mode, killer team).
+  private final String teamName;
 }

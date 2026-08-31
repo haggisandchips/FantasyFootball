@@ -43,7 +43,7 @@ public class AuthenticatedSquadProvider implements SquadProvider {
 
     final int entryId = fetchEntryId();
     final MyTeamResponse myTeam = fetchMyTeam(entryId);
-    final int overallPoints = fetchOverallPoints(entryId);
+    final EntryResponse entry = fetchEntry(entryId);
 
     final Map<Integer, Player> playersById =
         allPlayers.stream().collect(Collectors.toMap(Player::getFantasyId, player -> player));
@@ -104,7 +104,7 @@ public class AuthenticatedSquadProvider implements SquadProvider {
 
     return new Squad(
         toPounds(transfers.getValue()), toPounds(transfers.getBank()), freeTransfers, team,
-        startingEleven, substitutes, captain, viceCaptain, overallPoints);
+        startingEleven, substitutes, captain, viceCaptain, entry.getSummaryOverallPoints(), entry.getName());
   }
 
   private int fetchEntryId() throws IOException, InterruptedException {
@@ -130,12 +130,12 @@ public class AuthenticatedSquadProvider implements SquadProvider {
     return objectMapper.readValue(body, MyTeamResponse.class);
   }
 
-  private int fetchOverallPoints(final int entryId) throws IOException, InterruptedException {
+  private EntryResponse fetchEntry(final int entryId) throws IOException, InterruptedException {
 
     final URI uri = URI.create("https://fantasy.premierleague.com/api/entry/" + entryId + "/");
     final String body = fplAuthClient.authenticatedGet(uri);
 
-    return objectMapper.readValue(body, EntryResponse.class).getSummaryOverallPoints();
+    return objectMapper.readValue(body, EntryResponse.class);
   }
 
   private static BigDecimal toPounds(final int tenths) {
@@ -185,6 +185,8 @@ public class AuthenticatedSquadProvider implements SquadProvider {
 
     @JsonProperty("summary_overall_points")
     private int summaryOverallPoints;
+
+    private String name;
   }
 
   @Data
