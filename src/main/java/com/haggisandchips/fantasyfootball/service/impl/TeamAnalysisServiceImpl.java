@@ -64,9 +64,13 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
 
   private static Comparator<TransferSuggestion> transferSuggestionComparator(final Strategy strategy) {
 
+    // The whole chain is flipped by the trailing reversed() (so higher-is-better unavailablePlayersOut
+    // and strategy score sort first) - the cost term is therefore built descending here too, so that
+    // after the flip it reads as ascending: on a tie, the cheaper team sorts first.
     return Comparator
         .comparingInt(TransferSuggestion::getUnavailablePlayersOut)
         .thenComparing((first, second) -> strategy.compare(first.getTeam(), second.getTeam()))
+        .thenComparing(suggestion -> suggestion.getTeam().getCostNow(), Comparator.reverseOrder())
         .reversed();
   }
 
