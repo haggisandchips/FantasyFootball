@@ -17,6 +17,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 
 @Slf4j
 public final class TransferSelector {
@@ -64,42 +65,46 @@ public final class TransferSelector {
       final PermutationGenerator<Player> generator =
           new PermutationGeneratorImpl<>(myPlayers, transferBudget);
 
-      final long progressStep = Math.max(1, totalCombinations / PROGRESS_LOG_STEPS);
+      // The lesser of a fixed cap and 10% of the total - total/10 alone is far too coarse once the
+      // search space gets into the billions (see Controls.MAX_TRANSFER_PROGRESS_LOG_STEP).
+      final long progressStep = Math.max(
+          1, Math.min(Controls.MAX_TRANSFER_PROGRESS_LOG_STEP, totalCombinations / PROGRESS_LOG_STEPS));
       final int suggestionsBefore = suggestions.size();
-      long evaluated = 0;
-      long nextProgressLogAt = progressStep;
+      final int currentTransferBudget = transferBudget;
+      final Progress progress = new Progress();
+      progress.nextLogAt = progressStep;
 
       while (generator.hasMore()) {
         final List<Player> playersOut = generator.getNext();
 
-        final List<Map<Player, Player>> candidateTransfers = new ArrayList<>();
+        // Candidates are handled as they're generated (rather than collected into a list first) so
+        // progress can be checked mid-recursion - a single top-level combination can itself expand
+        // into millions of leaves, which previously meant no progress update until it fully returned.
         buildCandidateTransfers(
-            playersOut, availablePlayers, candidateTransfers, new HashMap<>(), new ArrayList<>(myPlayers));
+            playersOut, availablePlayers, new HashMap<>(), new ArrayList<>(myPlayers), transfers -> {
+              progress.evaluated++;
+              if (progress.evaluated >= progress.nextLogAt) {
+                log.info("Progress: {}/{} candidate combinations evaluated ({}%)",
+                    progress.evaluated, totalCombinations, Math.min(100, progress.evaluated * 100 / totalCombinations));
+                progressListener.onProgress(currentTransferBudget, progress.evaluated, totalCombinations);
+                progress.nextLogAt += progressStep;
+              }
 
-        evaluated += candidateTransfers.size();
-        if (evaluated >= nextProgressLogAt) {
-          log.info("Progress: {}/{} candidate combinations evaluated ({}%)",
-              evaluated, totalCombinations, Math.min(100, evaluated * 100 / totalCombinations));
-          progressListener.onProgress(transferBudget, evaluated, totalCombinations);
-          nextProgressLogAt += progressStep;
-        }
+              if (!isAffordable(transfers, moneyAvailable)) {
+                return;
+              }
 
-        for (final Map<Player, Player> transfers : candidateTransfers) {
-          if (!isAffordable(transfers, moneyAvailable)) {
-            continue;
-          }
-
-          final Team candidateTeam = myTeam.makeSubstitutions(transfers);
-          if (candidateTeam.getPoints() > myTeam.getPoints() && TeamSelector.isValidTeam(candidateTeam)) {
-            suggestions.add(new TransferSuggestion(candidateTeam, transfers));
-            sizesConsidered.add(transfers.size());
-          }
-        }
+              final Team candidateTeam = myTeam.makeSubstitutions(transfers);
+              if (candidateTeam.getPoints() > myTeam.getPoints() && TeamSelector.isValidTeam(candidateTeam)) {
+                suggestions.add(new TransferSuggestion(candidateTeam, transfers));
+                sizesConsidered.add(transfers.size());
+              }
+            });
       }
 
       log.info("Finished evaluating {} transfer(s): {} candidate combination(s), {} suggestion(s) found",
-          transferBudget, evaluated, suggestions.size() - suggestionsBefore);
-      progressListener.onProgress(transferBudget, evaluated, totalCombinations);
+          transferBudget, progress.evaluated, suggestions.size() - suggestionsBefore);
+      progressListener.onProgress(transferBudget, progress.evaluated, totalCombinations);
     }
 
     return suggestions;
@@ -127,6 +132,16 @@ public final class TransferSelector {
     return total;
   }
 
+  // Mutable per-transferBudget progress counters - a lambda can't reassign captured locals, so
+  // these live in a small holder instead of two long[1] arrays or AtomicLongs (which would
+  // misleadingly suggest thread-safety is the point).
+  private static final class Progress {
+
+    long evaluated;
+
+    long nextLogAt;
+  }
+
   private static boolean isAffordable(final Map<Player, Player> transfers, final BigDecimal moneyAvailable) {
     BigDecimal coffers = moneyAvailable;
 
@@ -140,9 +155,9 @@ public final class TransferSelector {
   private static void buildCandidateTransfers(
       final List<Player> playersOut,
       final Map<Position, List<Player>> availablePlayers,
-      final List<Map<Player, Player>> candidateTransfers,
       final Map<Player, Player> currentTransfers,
-      final List<Player> excludedPlayers) {
+      final List<Player> excludedPlayers,
+      final Consumer<Map<Player, Player>> onCandidate) {
 
     final List<Player> remaining = new ArrayList<>(playersOut);
     final Player playerOut = remaining.remove(0);
@@ -159,11 +174,11 @@ public final class TransferSelector {
       transfers.put(playerOut, playerIn);
 
       if (remaining.isEmpty()) {
-        candidateTransfers.add(transfers);
+        onCandidate.accept(transfers);
       } else {
         final List<Player> nextExclusions = new ArrayList<>(exclusions);
         nextExclusions.add(playerIn);
-        buildCandidateTransfers(remaining, availablePlayers, candidateTransfers, transfers, nextExclusions);
+        buildCandidateTransfers(remaining, availablePlayers, transfers, nextExclusions, onCandidate);
       }
     }
   }

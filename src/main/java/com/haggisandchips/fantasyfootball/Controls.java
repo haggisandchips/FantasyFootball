@@ -70,6 +70,11 @@ public final class Controls {
   // (that's what the Killer Team tab is for).
   public static final int UNLIMITED_TRANSFER_SUGGESTION_BUDGET = 2;
 
+  // Cap on how many candidate combinations elapse between transfer-search progress log lines, so a
+  // very large search space (e.g. ~1.3B combinations at transferBudget=3) still logs/reports
+  // progress frequently instead of only every totalCombinations/10.
+  public static final int MAX_TRANSFER_PROGRESS_LOG_STEP = 1_000_000;
+
   private Controls() {
   }
 
