@@ -35,6 +35,11 @@ class TransfersTab extends ScrollPane {
   // without depending on JavaFX having already computed real layout bounds.
   private static final double PAIR_WIDTH = 2 * PitchPlayer.DEFAULT_CARD_WIDTH + 60;
 
+  // .card's fx-padding (10 14 10 14) in app.css - the card's declared width has to cover this too,
+  // on top of transferCount * PAIR_WIDTH, or the transfersRow inside is left PAIR_WIDTH's padding
+  // short of its budget and wraps a pair onto its own line, needlessly tallening the card.
+  private static final double CARD_HORIZONTAL_PADDING = 28;
+
   private final Squad mySquad;
 
   private final TeamAnalysisService teamAnalysisService;
@@ -148,7 +153,7 @@ class TransfersTab extends ScrollPane {
 
     // Every suggestion shown together has the same number of transfer pairs (they're all for this
     // one transferCount), so a single width fits all of them exactly - no measuring needed.
-    final double cardWidth = transferCount * PAIR_WIDTH;
+    final double cardWidth = transferCount * PAIR_WIDTH + CARD_HORIZONTAL_PADDING;
     for (final TransferSuggestion suggestion : suggestions) {
       suggestionsBox.getChildren().add(suggestionRow(suggestion, cardWidth));
     }
@@ -156,7 +161,11 @@ class TransfersTab extends ScrollPane {
 
   private VBox suggestionRow(final TransferSuggestion suggestion, final double cardWidth) {
 
-    final FlowPane transfersRow = new FlowPane(12, 8);
+    // A plain HBox, not a wrap-capable FlowPane - cardWidth (see refreshSuggestions) already
+    // guarantees every pair fits on one line, so there's no wrapping left for FlowPane to do, only
+    // its looser preferred-height accounting for it to add: an HBox's height is just its tallest
+    // child, so a 2-pair row is exactly as tall as a 1-pair row, matching the 1-transfer cards.
+    final HBox transfersRow = new HBox(12);
     transfersRow.setAlignment(Pos.CENTER);
 
     for (final Map.Entry<Player, Player> transfer : suggestion.getTransfers().entrySet()) {
