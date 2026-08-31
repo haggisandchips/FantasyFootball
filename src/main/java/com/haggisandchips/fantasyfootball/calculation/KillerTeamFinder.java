@@ -19,15 +19,29 @@ import java.util.Set;
 @Slf4j
 public final class KillerTeamFinder {
 
+  // How often to log search progress, as a fraction of the upfront combination count.
+  private static final int PROGRESS_LOG_STEPS = 10;
+
   private KillerTeamFinder() {
   }
 
   public static Team find(
       final Strategy strategy,
       final Map<Position, Map<Integer, Set<PlayerLine>>> permutations,
-      final BigDecimal maxBudget) {
+      final BigDecimal maxBudget,
+      final KillerTeamSearchProgressListener progressListener) {
 
     log.debug(String.format("Calculating Killer Team by %s", strategy.name()));
+
+    final long totalCombinations = countCandidateTeams(permutations);
+    log.info("Calculating killer team ({}) - {} candidate combination(s) to evaluate", strategy, totalCombinations);
+    progressListener.onProgress(strategy, 0, totalCombinations);
+
+    // The lesser of a fixed cap and 10% of the total - see TransferSelector for why.
+    final long progressStep = Math.max(
+        1, Math.min(Controls.MAX_KILLER_TEAM_PROGRESS_LOG_STEP, totalCombinations / PROGRESS_LOG_STEPS));
+    long evaluated = 0;
+    long nextLogAt = progressStep;
 
     Team killerTeam = null;
 
@@ -61,6 +75,14 @@ public final class KillerTeamFinder {
                       break;
                     }
 
+                    evaluated++;
+                    if (evaluated >= nextLogAt) {
+                      log.info("Progress: {}/{} candidate combinations evaluated ({}%)",
+                          evaluated, totalCombinations, Math.min(100, evaluated * 100 / totalCombinations));
+                      progressListener.onProgress(strategy, evaluated, totalCombinations);
+                      nextLogAt += progressStep;
+                    }
+
                     List<PlayerLine> playerLines = new ArrayList<>();
                     playerLines.add(goalkeeperLine);
                     playerLines.add(defenderLine);
@@ -89,7 +111,26 @@ public final class KillerTeamFinder {
       }
     }
 
+    progressListener.onProgress(strategy, evaluated, totalCombinations);
     return killerTeam;
+  }
+
+  // Upper bound on how many candidate teams find() will build: the product, across the four
+  // positions, of how many player-lines that position contributes - each position's own count is
+  // summed across its score buckets, each bucket capped at MAX_PERMUTATIONS_PER_SCORE exactly like
+  // the nested loops above, so this matches the real (capped) iteration count precisely.
+  private static long countCandidateTeams(final Map<Position, Map<Integer, Set<PlayerLine>>> permutations) {
+
+    long total = 1;
+    for (final Position position : Position.values()) {
+      long positionCount = 0;
+      for (final Set<PlayerLine> lines : permutations.get(position).values()) {
+        positionCount += Math.min(lines.size(), Controls.MAX_PERMUTATIONS_PER_SCORE);
+      }
+      total *= positionCount;
+    }
+
+    return total;
   }
 
   private static boolean isAffordable(final BigDecimal maxBudget, final Team currentTeam) {

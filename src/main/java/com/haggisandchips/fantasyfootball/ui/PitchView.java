@@ -11,6 +11,7 @@ import javafx.scene.shape.Line;
 import javafx.scene.shape.Rectangle;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -85,6 +86,13 @@ class PitchView extends Region {
 
   private final Label substitutesLabel = new Label("SUBSTITUTES");
 
+  // Highest points left-to-right within a position row/subs bench, so a player's spot on screen
+  // reflects how highly they're rated rather than whatever incidental order the squad data arrived
+  // in; ties broken by fantasyId purely for consistency (any stable, arbitrary key would do).
+  private static final Comparator<Player> PLAYER_ORDER =
+      Comparator.comparingInt(Player::getPoints).reversed()
+          .thenComparingInt(Player::getFantasyId);
+
   PitchView(final Squad squad) {
 
     this.squad = squad;
@@ -122,8 +130,11 @@ class PitchView extends Region {
         squad.getStartingEleven().stream().collect(Collectors.groupingBy(Player::getPosition));
 
     for (final Position position : Position.values()) {
+      final List<Player> positionPlayers = new ArrayList<>(byPosition.getOrDefault(position, List.of()));
+      positionPlayers.sort(PLAYER_ORDER);
+
       final List<PitchPlayer> nodes = new ArrayList<>();
-      for (final Player player : byPosition.getOrDefault(position, List.of())) {
+      for (final Player player : positionPlayers) {
         final PitchPlayer node = PitchPlayer.of(player, captainBadge(player));
         nodes.add(node);
         getChildren().add(node);
@@ -131,11 +142,28 @@ class PitchView extends Region {
       startingNodesByPosition.put(position, nodes);
     }
 
-    for (final Player player : squad.getSubstitutes()) {
+    for (final Player player : orderedSubstitutes()) {
       final PitchPlayer node = PitchPlayer.ofSubstitute(player);
       substituteNodes.add(node);
       getChildren().add(node);
     }
+  }
+
+  // The goalkeeper substitute always leads the bench (as on the real FPL pitch view) rather than
+  // being sorted in among the outfield subs by points, since it's a fixed, recognisable landmark
+  // for "which sub is the emergency keeper" regardless of how the outfield subs are ranked.
+  private List<Player> orderedSubstitutes() {
+
+    final List<Player> ordered = new ArrayList<>();
+    squad.getSubstitutes().stream()
+        .filter(player -> player.getPosition() == Position.GOALKEEPER)
+        .forEach(ordered::add);
+    squad.getSubstitutes().stream()
+        .filter(player -> player.getPosition() != Position.GOALKEEPER)
+        .sorted(PLAYER_ORDER)
+        .forEach(ordered::add);
+
+    return ordered;
   }
 
   private String captainBadge(final Player player) {

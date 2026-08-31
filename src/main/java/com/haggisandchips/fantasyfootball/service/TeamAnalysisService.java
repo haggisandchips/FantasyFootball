@@ -1,5 +1,6 @@
 package com.haggisandchips.fantasyfootball.service;
 
+import com.haggisandchips.fantasyfootball.calculation.KillerTeamSearchProgressListener;
 import com.haggisandchips.fantasyfootball.calculation.TransferSearchProgressListener;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.Squad;
@@ -8,6 +9,7 @@ import com.haggisandchips.fantasyfootball.domain.Team;
 import com.haggisandchips.fantasyfootball.domain.TransferSuggestion;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -20,11 +22,24 @@ public interface TeamAnalysisService {
 
   Squad fetchMySquad(List<Player> allPlayers) throws IOException, InterruptedException;
 
-  // Inner key is the number of transfers used by suggestions in that list (e.g. 1 or 2).
-  Map<Strategy, Map<Integer, List<TransferSuggestion>>> calculateTransferSuggestions(
+  // The expensive, strategy-independent search (see TransferSelector) - every improving transfer
+  // combination found, unranked. Run once per squad and re-ranked per strategy via
+  // rankTransferSuggestions(), rather than re-run per strategy (see TransfersTab's cache).
+  List<TransferSuggestion> calculateTransferSuggestions(
       Squad mySquad, List<Player> allPlayers, TransferSearchProgressListener progressListener);
 
-  Map<Strategy, Team> calculateKillerTeams(List<Player> allPlayers);
+  // Cheap: just sorts/groups/limits an already-computed suggestion list for one strategy. Inner key
+  // is the number of transfers used by suggestions in that list (e.g. 1 or 2).
+  Map<Integer, List<TransferSuggestion>> rankTransferSuggestions(
+      List<TransferSuggestion> suggestions, Strategy strategy);
+
+  // Unlike transfer suggestions, the killer-team search itself is strategy- and budget-dependent
+  // (different score/form/points-per-game thresholds filter which players are even considered, and
+  // maxBudget bounds affordability) - so, unlike transfers, there's no cheap shared step to split
+  // out; each (strategy, maxBudget) combination is its own full search (see KillerTeamTab's cache).
+  Team calculateKillerTeam(
+      List<Player> allPlayers, Strategy strategy, BigDecimal maxBudget,
+      KillerTeamSearchProgressListener progressListener);
 
   // Submits a suggested transfer to the live FPL account the given squad was fetched from. Only
   // possible when mySquad.getTransferContext() is non-null - callers should check that before

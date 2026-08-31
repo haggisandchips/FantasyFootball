@@ -6,6 +6,7 @@ import com.haggisandchips.fantasyfootball.domain.Status;
 import com.haggisandchips.fantasyfootball.domain.Strategy;
 import com.haggisandchips.fantasyfootball.domain.TransferSuggestion;
 import com.haggisandchips.fantasyfootball.service.TeamAnalysisService;
+import javafx.collections.FXCollections;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -13,6 +14,7 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
 import javafx.scene.control.ScrollPane;
@@ -23,6 +25,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -49,27 +52,48 @@ class TransfersTab extends ScrollPane {
   // underneath this tab's in-memory state, so it's simplest to just refetch and rebuild from scratch.
   private final Runnable onTransferExecuted;
 
-  private final Map<Integer, List<TransferSuggestion>> suggestionsByCount;
+  // The expensive, strategy-independent search result (see TeamAnalysisService), computed once for
+  // this squad - ranking it per strategy (below) is cheap, so switching strategies never needs to
+  // re-run the search itself.
+  private final List<TransferSuggestion> rawSuggestions;
+
+  // Ranking a strategy is cheap - just sorting/limiting rawSuggestions (see
+  // TeamAnalysisService.rankTransferSuggestions) - so switching strategies is instant; still cached
+  // so repeated switches don't even redo that cheap work.
+  private final Map<Strategy, Map<Integer, List<TransferSuggestion>>> rankedByStrategy = new HashMap<>();
+
+  private final ComboBox<Strategy> strategyDropdown = new ComboBox<>(FXCollections.observableArrayList(Strategy.values()));
+
+  // Holds the transfer-count toggle + suggestionsBox, rebuilt wholesale on every strategy switch.
+  private final VBox transferSection = new VBox(16);
 
   private final FlowPane suggestionsBox = new FlowPane(16, 16);
 
+  private Map<Integer, List<TransferSuggestion>> suggestionsByCount;
+
   TransfersTab(
-      final Squad mySquad, final Map<Strategy, Map<Integer, List<TransferSuggestion>>> transferSuggestionsByStrategy,
+      final Squad mySquad, final List<TransferSuggestion> rawSuggestions,
       final TeamAnalysisService teamAnalysisService, final Runnable onTransferExecuted) {
 
     this.mySquad = mySquad;
+    this.rawSuggestions = rawSuggestions;
     this.teamAnalysisService = teamAnalysisService;
     this.onTransferExecuted = onTransferExecuted;
 
-    suggestionsByCount = new TreeMap<>(transferSuggestionsByStrategy.getOrDefault(Strategy.SCORE, Map.of()));
-
     suggestionsBox.setAlignment(Pos.CENTER);
-    refreshSuggestions(defaultTransferCount());
+
+    strategyDropdown.setValue(Strategy.SCORE);
+    strategyDropdown.setConverter(FantasyFootballDesktopApp.STRATEGY_LABELS);
+    strategyDropdown.setOnAction(event -> rebuildTransferSection());
+
+    rebuildTransferSection();
+
+    final HBox header = new HBox(12, sectionLabel("Suggested Transfers"), strategyDropdown);
+    header.setAlignment(Pos.CENTER_LEFT);
 
     final VBox root = new VBox(16,
-        sectionLabel("Suggested Transfers"),
-        transferCountToggle(),
-        suggestionsBox,
+        header,
+        transferSection,
         new Separator(),
         sectionLabel("Injured / Doubtful"),
         injuredList(mySquad));
@@ -77,6 +101,16 @@ class TransfersTab extends ScrollPane {
 
     setContent(root);
     setFitToWidth(true);
+  }
+
+  private void rebuildTransferSection() {
+
+    final Strategy strategy = strategyDropdown.getValue();
+    suggestionsByCount = new TreeMap<>(rankedByStrategy.computeIfAbsent(
+        strategy, s -> teamAnalysisService.rankTransferSuggestions(rawSuggestions, s)));
+
+    refreshSuggestions(defaultTransferCount());
+    transferSection.getChildren().setAll(transferCountToggle(), suggestionsBox);
   }
 
   // Picks whichever transfer count's best suggestion is the best overall - highest resulting team

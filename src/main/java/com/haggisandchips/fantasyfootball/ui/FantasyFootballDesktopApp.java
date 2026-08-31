@@ -5,7 +5,6 @@ import com.haggisandchips.fantasyfootball.calculation.TransferSearchProgressList
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.Squad;
 import com.haggisandchips.fantasyfootball.domain.Strategy;
-import com.haggisandchips.fantasyfootball.domain.Team;
 import com.haggisandchips.fantasyfootball.domain.TransferSuggestion;
 import com.haggisandchips.fantasyfootball.report.AnalysisReporter;
 import com.haggisandchips.fantasyfootball.service.TeamAnalysisService;
@@ -23,13 +22,13 @@ import javafx.scene.image.Image;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
+import javafx.util.StringConverter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 
 import java.util.List;
-import java.util.Map;
 
 // JavaFX and Spring Boot each want to own the app's lifecycle, so this class bridges them: init()
 // (called by the JavaFX launcher before start()) boots a headless Spring context to get at the
@@ -39,6 +38,24 @@ public class FantasyFootballDesktopApp extends Application {
 
   // Every size the OS might pick from for the title bar, taskbar and alt-tab switcher.
   private static final List<String> ICON_SIZES = List.of("16", "24", "32", "48", "64", "128", "256");
+
+  // Shared by TransfersTab and KillerTeamTab's strategy dropdowns, so both read "Points per game"
+  // rather than the enum's own POINTS_PER_GAME.
+  static final StringConverter<Strategy> STRATEGY_LABELS = new StringConverter<>() {
+    @Override
+    public String toString(final Strategy strategy) {
+      return switch (strategy) {
+        case SCORE -> "Score";
+        case FORM -> "Form";
+        case POINTS_PER_GAME -> "Points per game";
+      };
+    }
+
+    @Override
+    public Strategy fromString(final String string) {
+      throw new UnsupportedOperationException("Strategy dropdowns are selection-only");
+    }
+  };
 
   private ConfigurableApplicationContext springContext;
 
@@ -95,8 +112,7 @@ public class FantasyFootballDesktopApp extends Application {
       final List<Player> allPlayers = allPlayersTask.getValue();
       analysisReporter.reportAllPlayers(allPlayers);
 
-      wireKillerTeamCalculation(teamAnalysisService, analysisReporter, killerTeamTab, allPlayers);
-      loadMySquad(stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, allPlayers);
+      loadMySquad(stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, killerTeamTab, allPlayers);
     });
 
     allPlayersTask.setOnFailed(event -> {
@@ -111,7 +127,7 @@ public class FantasyFootballDesktopApp extends Application {
 
   private void loadMySquad(
       final Stage stage, final TeamAnalysisService teamAnalysisService, final AnalysisReporter analysisReporter,
-      final Tab mySquadTab, final Tab transfersTab, final List<Player> allPlayers) {
+      final Tab mySquadTab, final Tab transfersTab, final KillerTeamTab killerTeamTab, final List<Player> allPlayers) {
 
     final Task<Squad> squadTask = new Task<>() {
       @Override
@@ -130,7 +146,14 @@ public class FantasyFootballDesktopApp extends Application {
         stage.setTitle("Fantasy Football - " + mySquad.getTeamName());
       }
 
-      loadTransferSuggestions(stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, mySquad, allPlayers);
+      // Needs mySquad (for the default budget - see KillerTeamTab.availableFunds()), so wired here
+      // rather than as soon as allPlayers is available. A no-op after the first call (a submitted
+      // transfer re-runs loadMySquad, but the killer team's own strategy/budget selection and cache
+      // shouldn't be reset just because the live squad changed elsewhere).
+      killerTeamTab.init(teamAnalysisService, allPlayers, mySquad, analysisReporter::reportKillerTeam);
+
+      loadTransferSuggestions(
+          stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, killerTeamTab, mySquad, allPlayers);
     });
 
     squadTask.setOnFailed(event -> {
@@ -144,11 +167,12 @@ public class FantasyFootballDesktopApp extends Application {
 
   private void loadTransferSuggestions(
       final Stage stage, final TeamAnalysisService teamAnalysisService, final AnalysisReporter analysisReporter,
-      final Tab mySquadTab, final Tab transfersTab, final Squad mySquad, final List<Player> allPlayers) {
+      final Tab mySquadTab, final Tab transfersTab, final KillerTeamTab killerTeamTab, final Squad mySquad,
+      final List<Player> allPlayers) {
 
-    final Task<Map<Strategy, Map<Integer, List<TransferSuggestion>>>> transfersTask = new Task<>() {
+    final Task<List<TransferSuggestion>> transfersTask = new Task<>() {
       @Override
-      protected Map<Strategy, Map<Integer, List<TransferSuggestion>>> call() {
+      protected List<TransferSuggestion> call() {
 
         final TransferSearchProgressListener progressListener = (transferBudget, evaluated, total) -> {
           updateMessage(String.format(
@@ -160,51 +184,25 @@ public class FantasyFootballDesktopApp extends Application {
       }
     };
 
-    transfersTab.setContent(transferProgressPane(transfersTask));
+    transfersTab.setContent(progressPane(transfersTask));
 
     transfersTask.setOnSucceeded(event -> {
-      final Map<Strategy, Map<Integer, List<TransferSuggestion>>> transferSuggestions = transfersTask.getValue();
-      analysisReporter.reportTransferSuggestions(transferSuggestions);
+      final List<TransferSuggestion> rawSuggestions = transfersTask.getValue();
+      analysisReporter.reportTransferSuggestions(
+          Strategy.SCORE, teamAnalysisService.rankTransferSuggestions(rawSuggestions, Strategy.SCORE));
 
       // A submitted transfer changes the live squad (picks, bank, free transfers) - re-fetch and
       // recalculate everything from scratch rather than trying to patch the in-memory state.
-      final Runnable onTransferExecuted = () ->
-          loadMySquad(stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, allPlayers);
+      final Runnable onTransferExecuted = () -> loadMySquad(
+          stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, killerTeamTab, allPlayers);
 
-      transfersTab.setContent(new TransfersTab(mySquad, transferSuggestions, teamAnalysisService, onTransferExecuted));
+      transfersTab.setContent(new TransfersTab(mySquad, rawSuggestions, teamAnalysisService, onTransferExecuted));
     });
 
     transfersTask.setOnFailed(event ->
         transfersTab.setContent(errorPane(describe(transfersTask.getException()))));
 
     Thread.ofVirtual().name("calculate-transfers").start(transfersTask);
-  }
-
-  private void wireKillerTeamCalculation(
-      final TeamAnalysisService teamAnalysisService, final AnalysisReporter analysisReporter,
-      final KillerTeamTab killerTeamTab, final List<Player> allPlayers) {
-
-    killerTeamTab.setOnCalculate(() -> {
-      killerTeamTab.showLoading();
-
-      final Task<Map<Strategy, Team>> killerTeamTask = new Task<>() {
-        @Override
-        protected Map<Strategy, Team> call() {
-
-          return teamAnalysisService.calculateKillerTeams(allPlayers);
-        }
-      };
-
-      killerTeamTask.setOnSucceeded(event -> {
-        final Map<Strategy, Team> killerTeams = killerTeamTask.getValue();
-        analysisReporter.reportKillerTeams(killerTeams);
-        killerTeamTab.showResult(killerTeams);
-      });
-
-      killerTeamTask.setOnFailed(event -> killerTeamTab.showError(describe(killerTeamTask.getException())));
-
-      Thread.ofVirtual().name("calculate-killer-team").start(killerTeamTask);
-    });
   }
 
   @Override
@@ -214,7 +212,7 @@ public class FantasyFootballDesktopApp extends Application {
     Platform.exit();
   }
 
-  private static String describe(final Throwable error) {
+  static String describe(final Throwable error) {
 
     log.error("Analysis step failed", error);
     return error.getMessage();
@@ -237,8 +235,9 @@ public class FantasyFootballDesktopApp extends Application {
   }
 
   // Bound directly to the task's own progress/message properties (rather than polling or manually
-  // marshalling updates onto the FX thread) - Task already does that marshalling for us.
-  private static StackPane transferProgressPane(final Task<?> task) {
+  // marshalling updates onto the FX thread) - Task already does that marshalling for us. Shared by
+  // TransfersTab and KillerTeamTab (package-private, not private - KillerTeamTab uses it too).
+  static StackPane progressPane(final Task<?> task) {
 
     final ProgressBar progressBar = new ProgressBar();
     progressBar.progressProperty().bind(task.progressProperty());

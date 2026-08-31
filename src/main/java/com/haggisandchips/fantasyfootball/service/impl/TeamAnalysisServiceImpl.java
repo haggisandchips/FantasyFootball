@@ -2,6 +2,7 @@ package com.haggisandchips.fantasyfootball.service.impl;
 
 import com.haggisandchips.fantasyfootball.Controls;
 import com.haggisandchips.fantasyfootball.calculation.KillerTeamFinder;
+import com.haggisandchips.fantasyfootball.calculation.KillerTeamSearchProgressListener;
 import com.haggisandchips.fantasyfootball.calculation.TeamSelector;
 import com.haggisandchips.fantasyfootball.calculation.TransferSearchProgressListener;
 import com.haggisandchips.fantasyfootball.calculation.TransferSelector;
@@ -19,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -87,51 +89,44 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
   }
 
   @Override
-  public Map<Strategy, Map<Integer, List<TransferSuggestion>>> calculateTransferSuggestions(
+  public List<TransferSuggestion> calculateTransferSuggestions(
       final Squad mySquad, final List<Player> allPlayers, final TransferSearchProgressListener progressListener) {
 
-    final Map<Position, List<Player>> availablePlayers = groupAvailablePlayers(allPlayers);
-    final Map<Strategy, Map<Integer, List<TransferSuggestion>>> transferSuggestionsByStrategy = new HashMap<>();
-
-    if (mySquad.getFreeTransfers() > 0 || Controls.FREE_TRANSFERS_OVERRIDE > 0) {
-      final List<TransferSuggestion> suggestions =
-          TransferSelector.getTransferSuggestions(mySquad, copyAvailablePlayers(availablePlayers), progressListener);
-
-      for (final Strategy strategy : Controls.STRATEGIES) {
-        final List<TransferSuggestion> sorted = new ArrayList<>(suggestions);
-        sorted.sort(transferSuggestionComparator(strategy));
-
-        final Map<Integer, List<TransferSuggestion>> byTransferCount =
-            sorted.stream().collect(Collectors.groupingBy(suggestion -> suggestion.getTransfers().size()));
-        byTransferCount.replaceAll(
-            (transferCount, suggestionsForCount) ->
-                suggestionsForCount.stream()
-                    .limit(Controls.MAX_TRANSFER_SUGGESTIONS_LOGGED)
-                    .collect(Collectors.toList()));
-
-        transferSuggestionsByStrategy.put(strategy, byTransferCount);
-      }
+    if (mySquad.getFreeTransfers() <= 0 && Controls.FREE_TRANSFERS_OVERRIDE <= 0) {
+      return List.of();
     }
 
-    return transferSuggestionsByStrategy;
+    final Map<Position, List<Player>> availablePlayers = groupAvailablePlayers(allPlayers);
+    return TransferSelector.getTransferSuggestions(mySquad, copyAvailablePlayers(availablePlayers), progressListener);
   }
 
   @Override
-  public Map<Strategy, Team> calculateKillerTeams(final List<Player> allPlayers) {
+  public Map<Integer, List<TransferSuggestion>> rankTransferSuggestions(
+      final List<TransferSuggestion> suggestions, final Strategy strategy) {
+
+    final List<TransferSuggestion> sorted = new ArrayList<>(suggestions);
+    sorted.sort(transferSuggestionComparator(strategy));
+
+    final Map<Integer, List<TransferSuggestion>> byTransferCount =
+        sorted.stream().collect(Collectors.groupingBy(suggestion -> suggestion.getTransfers().size()));
+    byTransferCount.replaceAll(
+        (transferCount, suggestionsForCount) ->
+            suggestionsForCount.stream()
+                .limit(Controls.MAX_TRANSFER_SUGGESTIONS_LOGGED)
+                .collect(Collectors.toList()));
+
+    return byTransferCount;
+  }
+
+  @Override
+  public Team calculateKillerTeam(
+      final List<Player> allPlayers, final Strategy strategy, final BigDecimal maxBudget,
+      final KillerTeamSearchProgressListener progressListener) {
 
     final Map<Position, List<Player>> availablePlayers = groupAvailablePlayers(allPlayers);
-    final Map<Strategy, Team> killerTeams = new HashMap<>();
-
-    for (final Strategy strategy : Controls.STRATEGIES) {
-      killerTeams.put(
-          strategy,
-          KillerTeamFinder.find(
-              strategy,
-              TeamSelector.buildPermutations(strategy, copyAvailablePlayers(availablePlayers)),
-              Controls.MAX_BUDGET));
-    }
-
-    return killerTeams;
+    return KillerTeamFinder.find(
+        strategy, TeamSelector.buildPermutations(strategy, copyAvailablePlayers(availablePlayers)), maxBudget,
+        progressListener);
   }
 
   @Override

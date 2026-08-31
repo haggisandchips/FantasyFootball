@@ -1,19 +1,13 @@
 package com.haggisandchips.fantasyfootball;
 
 import com.haggisandchips.fantasyfootball.domain.Position;
-import com.haggisandchips.fantasyfootball.domain.Strategy;
 
-import java.math.BigDecimal;
-import java.util.EnumSet;
 import java.util.Map;
 
 import static com.haggisandchips.fantasyfootball.domain.Position.DEFENDER;
 import static com.haggisandchips.fantasyfootball.domain.Position.FORWARD;
 import static com.haggisandchips.fantasyfootball.domain.Position.GOALKEEPER;
 import static com.haggisandchips.fantasyfootball.domain.Position.MIDFIELDER;
-import static com.haggisandchips.fantasyfootball.domain.Strategy.FORM;
-import static com.haggisandchips.fantasyfootball.domain.Strategy.POINTS_PER_GAME;
-import static com.haggisandchips.fantasyfootball.domain.Strategy.SCORE;
 
 public final class Controls {
 
@@ -24,12 +18,6 @@ public final class Controls {
       "14", 2,
       "15", 2,
       "18", 2*/);
-
-  public static final EnumSet<Strategy> STRATEGIES = EnumSet.of(
-      SCORE/*, FORM, POINTS_PER_GAME*/
-  );
-
-  public static final BigDecimal MAX_BUDGET = new BigDecimal("99.3");
 
   // TODO Find a better means - property weighted by cost maybe?
   public static final Map<Position, Integer> MINIMUM_SCORE_THRESHOLD = Map.of(
@@ -74,6 +62,9 @@ public final class Controls {
   // very large search space (e.g. ~1.3B combinations at transferBudget=3) still logs/reports
   // progress frequently instead of only every totalCombinations/10.
   public static final int MAX_TRANSFER_PROGRESS_LOG_STEP = 1_000_000;
+
+  // Same idea as MAX_TRANSFER_PROGRESS_LOG_STEP, but for KillerTeamFinder's from-scratch search.
+  public static final int MAX_KILLER_TEAM_PROGRESS_LOG_STEP = 1_000_000;
 
   private Controls() {
   }

@@ -18,7 +18,11 @@ public interface AnalysisReporter {
 
   void reportSquad(Squad mySquad);
 
-  void reportTransferSuggestions(Map<Strategy, Map<Integer, List<TransferSuggestion>>> transferSuggestionsByStrategy);
+  // Reports one strategy's ranking at a time (see TeamAnalysisService.rankTransferSuggestions) -
+  // ranking the rest is now on-demand UI work, not computed eagerly for every strategy.
+  void reportTransferSuggestions(Strategy strategy, Map<Integer, List<TransferSuggestion>> byTransferCount);
 
-  void reportKillerTeams(Map<Strategy, Team> killerTeams);
+  // Reported once per (strategy, budget) calculation as the user triggers them (see KillerTeamTab),
+  // rather than once for every strategy up front.
+  void reportKillerTeam(Strategy strategy, Team team);
 }

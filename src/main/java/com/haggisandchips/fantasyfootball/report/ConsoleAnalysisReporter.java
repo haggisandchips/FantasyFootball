@@ -41,25 +41,24 @@ public class ConsoleAnalysisReporter implements AnalysisReporter {
 
   @Override
   public void reportTransferSuggestions(
-      final Map<Strategy, Map<Integer, List<TransferSuggestion>>> transferSuggestionsByStrategy) {
+      final Strategy strategy, final Map<Integer, List<TransferSuggestion>> byTransferCount) {
 
-    if (transferSuggestionsByStrategy.isEmpty()) {
-      log.info("No free transfers available - skipping transfer suggestions");
+    if (byTransferCount.isEmpty()) {
+      log.info("No transfer suggestions found for strategy {}", strategy.name());
       return;
     }
 
-    transferSuggestionsByStrategy.forEach(
-        (strategy, byTransferCount) -> byTransferCount.forEach((transferCount, suggestions) -> {
-          log.info("Transfer suggestions by {} using {} transfer(s):", strategy.name(), transferCount);
-          for (final TransferSuggestion suggestion : suggestions) {
-            log.info("{}", suggestion);
-          }
-        }));
+    byTransferCount.forEach((transferCount, suggestions) -> {
+      log.info("Transfer suggestions by {} using {} transfer(s):", strategy.name(), transferCount);
+      for (final TransferSuggestion suggestion : suggestions) {
+        log.info("{}", suggestion);
+      }
+    });
   }
 
   @Override
-  public void reportKillerTeams(final Map<Strategy, Team> killerTeams) {
+  public void reportKillerTeam(final Strategy strategy, final Team team) {
 
-    killerTeams.forEach((strategy, team) -> log.info("Killer Team by {}: {}", strategy.name(), team));
+    log.info("Killer Team by {}: {}", strategy.name(), team);
   }
 }
