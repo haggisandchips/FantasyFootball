@@ -99,7 +99,15 @@ final class PitchPlayer extends VBox {
     setMaxWidth(cardWidth);
 
     nameLabel.setStyle(String.format("-fx-font-size: %.0fpx;", Math.clamp(size * 0.13, 9, 13)));
-    detailLabel.setStyle(String.format("-fx-font-size: %.0fpx;", Math.clamp(size * 0.10, 8, 11)));
+    detailLabel.setStyle(String.format("-fx-font-size: %.0fpx;", detailFontSize(size)));
+  }
+
+  // The cost/points line's font size at a given shirt size - exposed so PitchView can reserve
+  // breathing room below it (e.g. between the forward row and the halfway line) proportional to
+  // how much space that line actually takes, rather than a fixed pixel guess.
+  static double detailFontSize(final double shirtSize) {
+
+    return Math.clamp(shirtSize * 0.10, 8, 11);
   }
 
   private static String shirtUrl(final Player player) {

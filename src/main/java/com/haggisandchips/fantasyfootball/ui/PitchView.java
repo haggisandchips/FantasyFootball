@@ -240,7 +240,11 @@ class PitchView extends Region {
     // MIDFIELDER split the space between them into three equal gaps, so spacing stays even and
     // FORWARD can never overlap MIDFIELDER regardless of how tall the region actually is.
     final double goalkeeperY = offsetY + height * GOALKEEPER_Y_FRACTION;
-    final double forwardY = halfwayLineY - cardHeight;
+    // Leaves a little breathing room between the forward row and the halfway line, so the cost/
+    // points line underneath the shirt doesn't sit right on top of it - half that line's own
+    // height is enough.
+    final double forwardBottomGap = PitchPlayer.detailFontSize(shirtSize) / 2.0;
+    final double forwardY = halfwayLineY - cardHeight - forwardBottomGap;
     final double rowGap = (forwardY - goalkeeperY) / 3.0;
 
     final double[] rowY = { goalkeeperY, goalkeeperY + rowGap, goalkeeperY + 2 * rowGap, forwardY };
