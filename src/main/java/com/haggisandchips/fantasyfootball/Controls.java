@@ -1,13 +1,6 @@
 package com.haggisandchips.fantasyfootball;
 
-import com.haggisandchips.fantasyfootball.domain.Position;
-
 import java.util.Map;
-
-import static com.haggisandchips.fantasyfootball.domain.Position.DEFENDER;
-import static com.haggisandchips.fantasyfootball.domain.Position.FORWARD;
-import static com.haggisandchips.fantasyfootball.domain.Position.GOALKEEPER;
-import static com.haggisandchips.fantasyfootball.domain.Position.MIDFIELDER;
 
 public final class Controls {
 
@@ -19,29 +12,31 @@ public final class Controls {
       "15", 2,
       "18", 2*/);
 
-  // TODO Find a better means - property weighted by cost maybe?
-  public static final Map<Position, Integer> MINIMUM_SCORE_THRESHOLD = Map.of(
-      GOALKEEPER, 5,
-      DEFENDER, 10,
-      MIDFIELDER, 13,
-      FORWARD, 10
-  );
-
-  public static final Map<Position, Double> MINIMUM_POINTS_PER_GAME_THRESHOLD = Map.of(
-      GOALKEEPER, 3.5,
-      DEFENDER, 3.5,
-      MIDFIELDER, 3.5,
-      FORWARD, 3.5
-  );
-
-  public static final Map<Position, Double> MINIMUM_FORM_THRESHOLD = Map.of(
-      GOALKEEPER, 1.5,
-      DEFENDER, 4.0,
-      MIDFIELDER, 4.0,
-      FORWARD, 3.0
-  );
-
   public static final int MAX_PERMUTATIONS_PER_SCORE = 5;
+
+  // Killer Team: target number of players to keep, per position, when auto-calculating each
+  // strategy's default minimum threshold (see KillerTeamTab.calculateDefaultThreshold) - the
+  // default is set to the maximum value that still keeps at least this many, i.e. the target-ranked
+  // player's own stat exactly. Applies to all 4 positions, GOALKEEPER included - C(n, 2) looks cheap
+  // in isolation, but it's still a straight multiplier on the combined total across all 4 positions,
+  // so leaving any one position unrestricted inflates that combined total by whatever factor its
+  // pool is over this target. Just the starting point shown in the tab's editable threshold fields,
+  // recalculated fresh from live player data every time rather than a fixed number that would
+  // perform worse as the season's scores grow (a "13+ points" cutoff that's about right in November
+  // excludes almost everyone in gameweek 2, and is far too loose by gameweek 30).
+  public static final int KILLER_TEAM_DEFAULT_TARGET_PLAYERS_PER_POSITION = 10;
+
+  // Transfers: how far below the anchor (2nd-worst-scoring owned player in that position) a
+  // candidate's score can fall and still be considered - see TransferSelector.filterCandidatePool.
+  public static final double TRANSFER_CANDIDATE_SCORE_MARGIN_FRACTION = 0.2;
+
+  // Transfers: regardless of the score-margin/cost checks above, the top N candidates by points in
+  // a position are always considered - early in the season, everyone's season-total points are
+  // small and close together, so a percentage-based margin on a tiny anchor score can be too tight
+  // and exclude a candidate who's genuinely one of the best available. This is a deliberately
+  // generous safety net (slower search is an acceptable trade for not missing a good transfer,
+  // especially early season when a sub-optimal pick takes longer to correct).
+  public static final int TRANSFER_CANDIDATE_POOL_SIZE = 60;
 
   public static final int MAXIMUM_PLAYERS_FROM_TEAM = 3;
 

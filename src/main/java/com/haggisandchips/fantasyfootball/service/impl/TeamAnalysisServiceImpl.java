@@ -121,12 +121,13 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
   @Override
   public Team calculateKillerTeam(
       final List<Player> allPlayers, final Strategy strategy, final BigDecimal maxBudget,
-      final KillerTeamSearchProgressListener progressListener) {
+      final Map<Position, Double> minimumThresholds, final KillerTeamSearchProgressListener progressListener) {
 
     final Map<Position, List<Player>> availablePlayers = groupAvailablePlayers(allPlayers);
     return KillerTeamFinder.find(
-        strategy, TeamSelector.buildPermutations(strategy, copyAvailablePlayers(availablePlayers)), maxBudget,
-        progressListener);
+        strategy,
+        TeamSelector.buildPermutations(strategy, copyAvailablePlayers(availablePlayers), minimumThresholds),
+        maxBudget, progressListener);
   }
 
   @Override

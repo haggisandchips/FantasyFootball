@@ -11,7 +11,6 @@ import com.haggisandchips.fantasyfootball.util.PermutationGeneratorImpl;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -22,51 +21,22 @@ import java.util.TreeSet;
 public class TeamSelector {
 
   public static Map<Position, Map<Integer, Set<PlayerLine>>> buildPermutations(
-      final Strategy strategyOption, final Map<Position, List<Player>> players) {
+      final Strategy strategyOption, final Map<Position, List<Player>> players,
+      final Map<Position, Double> minimumThresholds) {
     final Map<Position, Map<Integer, Set<PlayerLine>>> permutations =
         new TreeMap<>();
 
-    // Remove all players below the minimum threshold
-    for (final List<Player> playersByPosition : players.values()) {
-      for (Iterator<Player> iter = playersByPosition.iterator(); iter.hasNext(); ) {
-        final Player player = iter.next();
+    for (final Position position : players.keySet()) {
+      final List<Player> pool = players.get(position);
+      final double threshold = minimumThresholds.get(position);
+      final List<Player> filtered = pool.stream()
+          .filter(player -> strategyOption.getPlayerStat().apply(player) >= threshold)
+          .toList();
 
-        // TODO Use strategy to handle this
-        switch (strategyOption) {
-          case SCORE:
-            if (player.getPoints() < Controls.MINIMUM_SCORE_THRESHOLD.get(player.getPosition())) {
-              iter.remove();
+      log.info("Killer Team {} pool: kept {} of {} players (minimum {} {})",
+          position, filtered.size(), pool.size(), threshold, strategyOption.name());
 
-              log.debug(
-                  "Removed player {} with score {}", player.getName(), player.getPoints());
-            }
-
-            break;
-
-          case POINTS_PER_GAME:
-            final double pointsPerGame = player.getPointsPerGame().doubleValue();
-            if (pointsPerGame < Controls.MINIMUM_POINTS_PER_GAME_THRESHOLD.get(player.getPosition())) {
-              iter.remove();
-
-              log.debug("Removed player {} with pointsPerGame {}", player.getName(), pointsPerGame);
-            }
-
-            break;
-
-          case FORM:
-            final double form = player.getForm().doubleValue();
-            if (form < Controls.MINIMUM_FORM_THRESHOLD.get(player.getPosition())) {
-              iter.remove();
-
-              log.debug("Removed player {} with form {}", player.getName(), form);
-            }
-
-            break;
-
-          default:
-            break;
-        }
-      }
+      players.put(position, filtered);
     }
 
     for (final Position position : players.keySet()) {

@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -39,6 +40,8 @@ public final class TransferSelector {
       log.warn("No squad data available - skipping transfer suggestions (see FantasyClient#getMySquad)");
       return List.of();
     }
+
+    final Map<Position, List<Player>> candidatePool = filterCandidatePool(myPlayers, availablePlayers);
 
     final BigDecimal moneyAvailable = mySquad.getMoneyAvailable();
     final List<TransferSuggestion> suggestions = new ArrayList<>();
@@ -69,7 +72,7 @@ public final class TransferSelector {
         continue;
       }
 
-      final long totalCombinations = countCandidateTransfers(myPlayers, transferBudget, availablePlayers);
+      final long totalCombinations = countCandidateTransfers(myPlayers, transferBudget, candidatePool);
       log.info("Calculating transfer suggestions using {} transfer(s) - {} candidate combination(s) to evaluate",
           transferBudget, totalCombinations);
       progressListener.onProgress(transferBudget, 0, totalCombinations);
@@ -93,7 +96,7 @@ public final class TransferSelector {
         // progress can be checked mid-recursion - a single top-level combination can itself expand
         // into millions of leaves, which previously meant no progress update until it fully returned.
         buildCandidateTransfers(
-            playersOut, 0, availablePlayers, excludedFromSquad, selectedIns, transfers, candidate -> {
+            playersOut, 0, candidatePool, excludedFromSquad, selectedIns, transfers, candidate -> {
               progress.evaluated++;
               if (progress.evaluated >= progress.nextLogAt) {
                 log.info("Progress: {}/{} candidate combinations evaluated ({}%)",
@@ -122,6 +125,70 @@ public final class TransferSelector {
     }
 
     return suggestions;
+  }
+
+  // Shrinks the "player in" candidate pool per position before the search runs, anchored off the
+  // squad's own players rather than an absolute number - without this, every status-available
+  // player in a position is a candidate (the unbounded pool that caused the JVM crash fixed earlier
+  // this session).
+  private static Map<Position, List<Player>> filterCandidatePool(
+      final List<Player> myPlayers, final Map<Position, List<Player>> availablePlayers) {
+
+    final Map<Position, List<Player>> filtered = new HashMap<>();
+
+    for (final Map.Entry<Position, List<Player>> entry : availablePlayers.entrySet()) {
+      final Position position = entry.getKey();
+
+      final List<Player> squadPlayersInPosition = myPlayers.stream()
+          .filter(player -> player.getPosition() == position)
+          .sorted(Comparator.comparingInt(Player::getPoints))
+          .toList();
+
+      if (squadPlayersInPosition.isEmpty()) {
+        filtered.put(position, entry.getValue());
+        continue;
+      }
+
+      // The 2nd-worst, not the worst - one outlier (an expensive dud, or a token cheap bench
+      // player) shouldn't single-handedly set the floor.
+      final int anchorIndex = Math.min(1, squadPlayersInPosition.size() - 1);
+      final int anchorScore = squadPlayersInPosition.get(anchorIndex).getPoints();
+      final int floor = Math.max(0, anchorScore
+          - (int) Math.ceil(anchorScore * Controls.TRANSFER_CANDIDATE_SCORE_MARGIN_FRACTION));
+
+      final BigDecimal cheapestOwnedCost = squadPlayersInPosition.stream()
+          .map(Player::getCostNow)
+          .min(BigDecimal::compareTo)
+          .orElseThrow();
+
+      // The top N by points, regardless of the floor/cost checks below - early in the season
+      // everyone's total points are small and close together, so a percentage-based margin on a
+      // tiny anchor score can be tighter than intended and exclude a candidate who's genuinely one
+      // of the best available. A missed transfer compounds (FPL's sub-optimal picks take gameweeks
+      // to fix), so this errs generous rather than fast.
+      final List<Player> topRankedByPoints = entry.getValue().stream()
+          .sorted(Comparator.comparingInt(Player::getPoints).reversed())
+          .limit(Controls.TRANSFER_CANDIDATE_POOL_SIZE)
+          .toList();
+      final Set<Player> topRanked = new HashSet<>(topRankedByPoints);
+
+      // A candidate passes on score, on price, or on rank - this is what stops an expensive, poorly
+      // performing owned player from raising the floor high enough to exclude perfectly good
+      // cheap or simply-better alternatives.
+      final List<Player> candidates = entry.getValue().stream()
+          .filter(player -> player.getPoints() >= floor
+              || player.getCostNow().compareTo(cheapestOwnedCost) <= 0
+              || topRanked.contains(player))
+          .toList();
+
+      log.info("Transfer {} candidate pool: kept {} of {} players (score floor {}, cost <= {}, or top {} by points)",
+          position, candidates.size(), entry.getValue().size(), floor, cheapestOwnedCost,
+          Controls.TRANSFER_CANDIDATE_POOL_SIZE);
+
+      filtered.put(position, candidates);
+    }
+
+    return filtered;
   }
 
   // Upper bound on how many candidate transfer combinations buildCandidateTransfers will produce

@@ -76,6 +76,18 @@ public final class KillerTeamFinder {
                     }
 
                     evaluated++;
+
+                    // Checked every iteration (not just at a log/progress checkpoint) - this is a
+                    // tight, blocking-call-free loop, so Task.cancel() alone never stops it (nothing
+                    // in it would ever notice the interrupt) unless something here actually checks
+                    // for it. A cheap flag read, so checking every iteration rather than only at the
+                    // (potentially far rarer) progress checkpoint costs nothing worth avoiding.
+                    if (Thread.currentThread().isInterrupted()) {
+                      log.info("Killer Team search cancelled after {}/{} combinations evaluated",
+                          evaluated, totalCombinations);
+                      return killerTeam;
+                    }
+
                     if (evaluated >= nextLogAt) {
                       log.info("Progress: {}/{} candidate combinations evaluated ({}%)",
                           evaluated, totalCombinations, Math.min(100, evaluated * 100 / totalCombinations));
@@ -115,11 +127,13 @@ public final class KillerTeamFinder {
     return killerTeam;
   }
 
-  // Upper bound on how many candidate teams find() will build: the product, across the four
-  // positions, of how many player-lines that position contributes - each position's own count is
-  // summed across its score buckets, each bucket capped at MAX_PERMUTATIONS_PER_SCORE exactly like
-  // the nested loops above, so this matches the real (capped) iteration count precisely.
-  private static long countCandidateTeams(final Map<Position, Map<Integer, Set<PlayerLine>>> permutations) {
+  // Exactly how many candidate teams find() will build: the product, across the four positions, of
+  // how many player-lines that position contributes - each position's own count is summed across
+  // its score buckets, each bucket capped at MAX_PERMUTATIONS_PER_SCORE exactly like the nested
+  // loops above, so this matches the real iteration count precisely (not just an estimate). Public
+  // so KillerTeamTab can show the same number live, from the same permutations a real search would
+  // use, rather than a cheaper but inexact approximation that can drift from what actually happens.
+  public static long countCandidateTeams(final Map<Position, Map<Integer, Set<PlayerLine>>> permutations) {
 
     long total = 1;
     for (final Position position : Position.values()) {

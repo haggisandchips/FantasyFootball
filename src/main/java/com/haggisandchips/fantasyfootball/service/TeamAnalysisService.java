@@ -3,6 +3,7 @@ package com.haggisandchips.fantasyfootball.service;
 import com.haggisandchips.fantasyfootball.calculation.KillerTeamSearchProgressListener;
 import com.haggisandchips.fantasyfootball.calculation.TransferSearchProgressListener;
 import com.haggisandchips.fantasyfootball.domain.Player;
+import com.haggisandchips.fantasyfootball.domain.Position;
 import com.haggisandchips.fantasyfootball.domain.Squad;
 import com.haggisandchips.fantasyfootball.domain.Strategy;
 import com.haggisandchips.fantasyfootball.domain.Team;
@@ -34,11 +35,14 @@ public interface TeamAnalysisService {
       List<TransferSuggestion> suggestions, Strategy strategy);
 
   // Unlike transfer suggestions, the killer-team search itself is strategy- and budget-dependent
-  // (different score/form/points-per-game thresholds filter which players are even considered, and
-  // maxBudget bounds affordability) - so, unlike transfers, there's no cheap shared step to split
-  // out; each (strategy, maxBudget) combination is its own full search (see KillerTeamTab's cache).
+  // (different per-position score/form/points-per-game minimums decide which players are even
+  // considered, and maxBudget bounds affordability) - so, unlike transfers, there's no cheap shared
+  // step to split out; each (strategy, maxBudget, minimumThresholds) combination is its own full
+  // search (see KillerTeamTab's cache). minimumThresholds is user-editable per position in the UI
+  // (see TeamSelector.buildPermutations) rather than a fixed constant, since the right cutoff
+  // depends on where the season's data actually is and is best judged by eye.
   Team calculateKillerTeam(
-      List<Player> allPlayers, Strategy strategy, BigDecimal maxBudget,
+      List<Player> allPlayers, Strategy strategy, BigDecimal maxBudget, Map<Position, Double> minimumThresholds,
       KillerTeamSearchProgressListener progressListener);
 
   // Submits a suggested transfer to the live FPL account the given squad was fetched from. Only
