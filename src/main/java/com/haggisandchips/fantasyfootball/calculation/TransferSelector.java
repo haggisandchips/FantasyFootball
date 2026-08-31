@@ -43,6 +43,18 @@ public final class TransferSelector {
     final BigDecimal moneyAvailable = mySquad.getMoneyAvailable();
     final List<TransferSuggestion> suggestions = new ArrayList<>();
 
+    // A player already in the squad can never be bought "in" as a replacement - true for the whole
+    // search, so computed once rather than re-derived at every recursion step.
+    final Set<Player> excludedFromSquad = new HashSet<>(myPlayers);
+
+    // Reused across the entire search via backtracking (buildCandidateTransfers mutates an entry in,
+    // recurses, then undoes it) instead of allocating a fresh HashMap/List at every recursion node.
+    // The previous copy-per-node approach allocated proportionally to the number of *nodes* in the
+    // search tree, which at transferBudget=3 runs into the billions - slow, and (per a JVM crash
+    // under that sustained GC load) not just an inconvenience.
+    final Map<Player, Player> transfers = new HashMap<>();
+    final Set<Player> selectedIns = new HashSet<>();
+
     // Use this to plan longer term strategies making interim transfers towards a dream team.
     int transferBudget =
         Controls.FREE_TRANSFERS_OVERRIDE > 0
@@ -81,7 +93,7 @@ public final class TransferSelector {
         // progress can be checked mid-recursion - a single top-level combination can itself expand
         // into millions of leaves, which previously meant no progress update until it fully returned.
         buildCandidateTransfers(
-            playersOut, availablePlayers, new HashMap<>(), new ArrayList<>(myPlayers), transfers -> {
+            playersOut, 0, availablePlayers, excludedFromSquad, selectedIns, transfers, candidate -> {
               progress.evaluated++;
               if (progress.evaluated >= progress.nextLogAt) {
                 log.info("Progress: {}/{} candidate combinations evaluated ({}%)",
@@ -90,14 +102,16 @@ public final class TransferSelector {
                 progress.nextLogAt += progressStep;
               }
 
-              if (!isAffordable(transfers, moneyAvailable)) {
+              if (!isAffordable(candidate, moneyAvailable)) {
                 return;
               }
 
-              final Team candidateTeam = myTeam.makeSubstitutions(transfers);
+              final Team candidateTeam = myTeam.makeSubstitutions(candidate);
               if (candidateTeam.getPoints() > myTeam.getPoints() && TeamSelector.isValidTeam(candidateTeam)) {
-                suggestions.add(new TransferSuggestion(candidateTeam, transfers));
-                sizesConsidered.add(transfers.size());
+                // Defensive copy - TransferSuggestion keeps this map, but `candidate` is the single
+                // shared map backtracking reuses (and keeps mutating) for the rest of the search.
+                suggestions.add(new TransferSuggestion(candidateTeam, new HashMap<>(candidate)));
+                sizesConsidered.add(candidate.size());
               }
             });
       }
@@ -152,34 +166,40 @@ public final class TransferSelector {
     return coffers.compareTo(BigDecimal.ZERO) >= 0;
   }
 
+  // Backtracking, not accumulate-then-branch: `transfers` and `selectedIns` are the same mutable
+  // instances all the way down the recursion, with each trial undone (removed) after its subtree
+  // returns - so the whole search allocates two collections total, not one per node. A player
+  // already in the squad (playersOut included) is always excluded via `excludedFromSquad` without
+  // needing its own per-node tracking, since squad membership never changes during the search.
   private static void buildCandidateTransfers(
       final List<Player> playersOut,
+      final int index,
       final Map<Position, List<Player>> availablePlayers,
-      final Map<Player, Player> currentTransfers,
-      final List<Player> excludedPlayers,
+      final Set<Player> excludedFromSquad,
+      final Set<Player> selectedIns,
+      final Map<Player, Player> transfers,
       final Consumer<Map<Player, Player>> onCandidate) {
 
-    final List<Player> remaining = new ArrayList<>(playersOut);
-    final Player playerOut = remaining.remove(0);
+    if (index == playersOut.size()) {
+      onCandidate.accept(transfers);
+      return;
+    }
 
-    final List<Player> exclusions = new ArrayList<>(excludedPlayers);
-    exclusions.add(playerOut);
+    final Player playerOut = playersOut.get(index);
 
     for (final Player playerIn : availablePlayers.get(playerOut.getPosition())) {
-      if (exclusions.contains(playerIn)) {
+      if (excludedFromSquad.contains(playerIn) || selectedIns.contains(playerIn)) {
         continue;
       }
 
-      final Map<Player, Player> transfers = new HashMap<>(currentTransfers);
+      selectedIns.add(playerIn);
       transfers.put(playerOut, playerIn);
 
-      if (remaining.isEmpty()) {
-        onCandidate.accept(transfers);
-      } else {
-        final List<Player> nextExclusions = new ArrayList<>(exclusions);
-        nextExclusions.add(playerIn);
-        buildCandidateTransfers(remaining, availablePlayers, transfers, nextExclusions, onCandidate);
-      }
+      buildCandidateTransfers(
+          playersOut, index + 1, availablePlayers, excludedFromSquad, selectedIns, transfers, onCandidate);
+
+      transfers.remove(playerOut);
+      selectedIns.remove(playerIn);
     }
   }
 }
