@@ -35,16 +35,37 @@ final class PitchPlayer extends VBox {
 
   static final double MAX_SHIRT_SIZE = 100;
 
-  static final double MIN_SHIRT_SIZE = 34;
+  // Just enough to keep the shirt image and clamp math sane (positive, non-zero) at the smallest
+  // conceivable pitch size - not a "readable" floor. Cards are meant to keep shrinking with whatever
+  // room the pitch is given (see PitchView, which no longer enforces its own minimum size either),
+  // and cardPadding() being proportional rather than a fixed pixel amount is what actually keeps
+  // rows from overlapping at any size, not this floor.
+  static final double MIN_SHIRT_SIZE = 10;
 
-  // Extra width/height beyond the shirt itself for the name + detail lines and breathing room.
-  static final double CARD_PADDING = 30;
+  // Extra width/height beyond the shirt itself for the name + detail lines and breathing room, as a
+  // fraction of the shirt's own size (30px at MAX_SHIRT_SIZE=100, matching how this used to be a flat
+  // 30px constant) rather than a fixed pixel amount - a fixed amount doesn't shrink as the shirt
+  // does, so at a small enough pitch size it would eventually dominate cardWidth/cardHeight and cause
+  // rows to overlap even though shirtSize itself had plenty of room left to shrink further.
+  private static final double CARD_PADDING_FRACTION = 0.3;
 
-  static final double DEFAULT_CARD_WIDTH = MAX_SHIRT_SIZE + CARD_PADDING;
+  static double cardPadding(final double shirtSize) {
 
-  // Gap between the shirt, name, detail and (where shown) fixture labels - exposed so PitchView can
-  // budget the same amount of extra height it reserves for the fixture line's own font size.
-  static final double LABEL_SPACING = 2;
+    return shirtSize * CARD_PADDING_FRACTION;
+  }
+
+  static final double DEFAULT_CARD_WIDTH = MAX_SHIRT_SIZE + cardPadding(MAX_SHIRT_SIZE);
+
+  // Gap between the shirt, name, detail and (where shown) fixture labels, as a fraction of shirt
+  // size (2px at MAX_SHIRT_SIZE=100) rather than a fixed pixel amount - for the same reason
+  // cardPadding() is proportional (see above). Exposed so PitchView can budget the same amount of
+  // extra height it reserves for the fixture line's own font size.
+  private static final double LABEL_SPACING_FRACTION = 0.02;
+
+  static double labelSpacing(final double shirtSize) {
+
+    return shirtSize * LABEL_SPACING_FRACTION;
+  }
 
   private final ImageView shirt;
 
@@ -134,7 +155,6 @@ final class PitchPlayer extends VBox {
     fixtureLabel = new Label(fixtureText(nextFixture));
     fixtureLabel.getStyleClass().add("player-fixture");
 
-    setSpacing(LABEL_SPACING);
     setAlignment(Pos.CENTER);
     getChildren().addAll(shirtPane, nameLabel, detailLabel, fixtureLabel);
 
@@ -176,7 +196,9 @@ final class PitchPlayer extends VBox {
     shirt.setFitWidth(size);
     shirt.setFitHeight(size);
 
-    final double cardWidth = size + CARD_PADDING;
+    setSpacing(labelSpacing(size));
+
+    final double cardWidth = size + cardPadding(size);
     setPrefWidth(cardWidth);
     setMaxWidth(cardWidth);
 
@@ -192,10 +214,14 @@ final class PitchPlayer extends VBox {
 
   // The cost/points line's font size at a given shirt size - exposed so PitchView can reserve
   // breathing room below it (e.g. between the forward row and the halfway line) proportional to
-  // how much space that line actually takes, rather than a fixed pixel guess.
+  // how much space that line actually takes, rather than a fixed pixel guess. The lower bound here
+  // is deliberately tiny (not a "still legible" floor, MIN_SHIRT_SIZE's own comment explains why) -
+  // an 8px floor sat close enough to the unclamped value at MAX_SHIRT_SIZE (10) that it was already
+  // active for most of the shrinking range, turning this back into a fixed pixel amount exactly
+  // where PitchView's overlap math needs it to keep shrinking.
   static double detailFontSize(final double shirtSize) {
 
-    return Math.clamp(shirtSize * 0.10, 8, 11);
+    return Math.clamp(shirtSize * 0.10, 2, 11);
   }
 
   private static String shirtUrl(final Player player) {

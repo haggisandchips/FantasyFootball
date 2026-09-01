@@ -12,7 +12,6 @@ import javafx.scene.shape.Line;
 import javafx.scene.shape.Rectangle;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
@@ -65,67 +64,6 @@ class PitchView extends Region {
   // clamped to PitchPlayer's own min/max.
   private static final double SHIRT_SIZE_FRACTION = PitchPlayer.MAX_SHIRT_SIZE / 900.0;
 
-  // The widest a starting-XI row ever gets (DEFENDER/MIDFIELDER's 5-a-side line) - unlike the
-  // substitutes row, placeRow gives these no side margin (see layoutChildren()'s placeRow calls), so
-  // this is the binding case for the horizontal half of the minimum size below.
-  private static final int MAX_ROW_PLAYERS =
-      Arrays.stream(Position.values()).mapToInt(Position::getNumber).max().orElseThrow();
-
-  // The smallest pitch height (paired, via ASPECT_RATIO, with the smallest width) below which cards
-  // start overlapping - horizontally, once a starting row's even spacing (rowWidth / (players + 1))
-  // falls below a card's own width; vertically, once rowGap (the even spacing layoutChildren()
-  // computes between the GOALKEEPER/DEFENDER/MIDFIELDER/FORWARD rows) falls below a card's actual
-  // rendered height (shirt + name + detail + fixture lines - taller than CARD_PADDING alone budgets
-  // for, see PitchPlayer). Either way, this is past the point where shirtSize's own clamp can shrink
-  // cards to compensate. Found by walking layoutChildren()'s real formulas (see
-  // minPitchHeightBelowWhichCardsOverlap()) rather than re-deriving a closed form by hand - with
-  // three separate clamps in play (shirtSize, detailFontSize, and the row-count-dependent geometry),
-  // that would be easy to get subtly wrong, and to leave stale the next time one of those formulas
-  // changes. (The 320x260 this used to be hardcoded to was well below both thresholds - it merely
-  // looked fine at whatever window size this was last tested at, until Killer Team's extra top/bottom
-  // chrome squeezed the pitch shorter than My Squad ever does and the rows visibly overlapped
-  // vertically.)
-  private static final double MIN_PITCH_HEIGHT = minPitchHeightBelowWhichCardsOverlap();
-
-  private static final double MIN_PITCH_WIDTH = MIN_PITCH_HEIGHT * ASPECT_RATIO;
-
-  // Walks candidate heights (in the height-constrained regime, i.e. width = height * ASPECT_RATIO -
-  // the same relationship layoutChildren() falls back to whenever the available width isn't itself
-  // the tighter constraint) until it finds the smallest one where neither overlap condition holds,
-  // reusing the exact same shirtSize/cardHeight/rowGap formulas layoutChildren() itself computes.
-  private static double minPitchHeightBelowWhichCardsOverlap() {
-
-    for (double height = 100; height <= 3000; height += 1) {
-      final double width = height * ASPECT_RATIO;
-
-      final double shirtSize = Math.clamp(width * SHIRT_SIZE_FRACTION, PitchPlayer.MIN_SHIRT_SIZE, PitchPlayer.MAX_SHIRT_SIZE);
-      final double cardWidth = shirtSize + PitchPlayer.CARD_PADDING;
-      final double cardHeight = shirtSize + PitchPlayer.CARD_PADDING;
-      final double fixtureLineHeight = PitchPlayer.detailFontSize(shirtSize) + PitchPlayer.LABEL_SPACING;
-      final double forwardBottomGap = PitchPlayer.detailFontSize(shirtSize) / 2.0 + 5;
-
-      final boolean rowsWouldOverlapHorizontally = width < cardWidth * (MAX_ROW_PLAYERS + 1);
-      if (rowsWouldOverlapHorizontally) {
-        continue;
-      }
-
-      final double goalkeeperY = height * GOALKEEPER_Y_FRACTION;
-      final double halfwayLineY = height * HALFWAY_LINE_Y_FRACTION;
-      final double forwardY = halfwayLineY - cardHeight - fixtureLineHeight - forwardBottomGap;
-      final double rowGap = (forwardY - goalkeeperY) / 3.0;
-
-      final boolean rowsWouldOverlapVertically = rowGap < cardHeight + fixtureLineHeight;
-      if (rowsWouldOverlapVertically) {
-        continue;
-      }
-
-      return height;
-    }
-
-    throw new IllegalStateException("No pitch height up to 3000px avoids card overlap - PitchPlayer's card "
-        + "geometry (shirt/font sizes, CARD_PADDING) likely changed in a way this no longer accounts for.");
-  }
-
   private final Squad squad;
 
   private final Line leftSideline = line();
@@ -161,7 +99,12 @@ class PitchView extends Region {
 
     this.squad = squad;
     getStyleClass().add("pitch");
-    setMinSize(MIN_PITCH_WIDTH, MIN_PITCH_HEIGHT);
+    // Deliberately no minimum beyond JavaFX's own default (0x0) - cards are meant to keep shrinking
+    // with whatever room the pitch is given (see PitchPlayer.cardPadding(), which scales
+    // proportionally with shirtSize rather than adding a fixed pixel amount, precisely so shrinking
+    // further never causes rows to overlap). Forcing a minimum here would fight the very container
+    // that's sometimes squeezing this smaller than My Squad's own header ever does (e.g. Killer
+    // Team's extra top controls/bottom button) - whatever's left over is pushed off-screen instead.
 
     centerCircle.setType(ArcType.OPEN);
     centerCircle.getStyleClass().add("pitch-line");
@@ -342,11 +285,15 @@ class PitchView extends Region {
     goal.setHeight(goalHeight);
 
     // Shirt/card size scales with the pitch itself, so cards shrink along with everything else
-    // when the window gets smaller instead of staying a fixed pixel size.
-    final double shirtSize = Math.clamp(
+    // when the window gets smaller instead of staying a fixed pixel size. Width alone would happily
+    // pick a shirtSize that leaves rows too close together vertically (see
+    // constrainShirtSizeToRowGap()), so this is also shrunk to whatever the region's height can
+    // actually fit without GOALKEEPER/DEFENDER/MIDFIELDER/FORWARD's rows overlapping.
+    final double widthBasedShirtSize = Math.clamp(
         width * SHIRT_SIZE_FRACTION, PitchPlayer.MIN_SHIRT_SIZE, PitchPlayer.MAX_SHIRT_SIZE);
-    final double cardWidth = shirtSize + PitchPlayer.CARD_PADDING;
-    final double cardHeight = shirtSize + PitchPlayer.CARD_PADDING;
+    final double shirtSize = constrainShirtSizeToRowGap(widthBasedShirtSize, height);
+    final double cardWidth = shirtSize + PitchPlayer.cardPadding(shirtSize);
+    final double cardHeight = shirtSize + PitchPlayer.cardPadding(shirtSize);
 
     for (final List<PitchPlayer> nodes : startingNodesByPosition.values()) {
       nodes.forEach(node -> node.setShirtSize(shirtSize));
@@ -358,16 +305,15 @@ class PitchView extends Region {
     // FORWARD can never overlap MIDFIELDER regardless of how tall the region actually is.
     final double goalkeeperY = offsetY + height * GOALKEEPER_Y_FRACTION;
     // On the pitch, PitchPlayer renders a third line (next fixture) below the cost/points line -
-    // cardHeight (shared with cardWidth via CARD_PADDING) only budgets for shirt + name + one detail
+    // cardHeight (shared with cardWidth via cardPadding()) only budgets for shirt + name + one detail
     // line, so reserve one more line's worth of height (its font size plus the card's own
     // inter-label spacing) on top of that, or the fixture line would sit under/into the halfway line
     // for the forward row specifically (the one row anchored to it).
-    final double fixtureLineHeight = PitchPlayer.detailFontSize(shirtSize) + PitchPlayer.LABEL_SPACING;
+    final double fixtureLineHeight = PitchPlayer.detailFontSize(shirtSize) + PitchPlayer.labelSpacing(shirtSize);
     // Leaves a little breathing room between the forward row and the halfway line, so the fixture
     // line underneath the shirt doesn't sit right on top of it - half that line's own height, plus a
-    // few extra fixed pixels (visually confirmed - the proportional gap alone still read as too
-    // tight), is enough.
-    final double forwardBottomGap = PitchPlayer.detailFontSize(shirtSize) / 2.0 + 5;
+    // proportional (not fixed - see cardPadding()'s own comment for why) sliver more, is enough.
+    final double forwardBottomGap = PitchPlayer.detailFontSize(shirtSize) / 2.0 + shirtSize * 0.05;
     final double forwardY = halfwayLineY - cardHeight - fixtureLineHeight - forwardBottomGap;
     final double rowGap = (forwardY - goalkeeperY) / 3.0;
 
@@ -385,6 +331,41 @@ class PitchView extends Region {
     final double subsRowY = subsLabelY + substitutesLabel.getHeight() + height * 0.015;
     final double subsMargin = width * SUBS_ROW_MARGIN_FRACTION;
     placeRow(substituteNodes, subsRowY, offsetX + subsMargin, width - 2 * subsMargin, cardWidth);
+  }
+
+  // A real card's rendered height (line-height beyond raw font point size, each Label's own default
+  // padding) runs noticeably taller than this class's own geometric estimate of it (cardHeight +
+  // fixtureLineHeight, both built purely from font-size numbers) - comfortably positive margins on
+  // that estimate alone still produced visible overlap in practice (a MIDFIELDER row's shirt resting
+  // on the DEFENDER row's captain badge/fixture line above it). ROW_HEIGHT_SAFETY_FACTOR pads the
+  // estimate rather than trying to model that overhead precisely, and shrinking shirtSize (rather
+  // than padding rowGap directly) is what actually creates the extra room: rowGap here is a
+  // *derived* quantity (see layoutChildren()'s forwardY/rowGap) - padding it directly would eat into
+  // FORWARD's own headroom against the halfway line instead of genuinely creating space. Walking
+  // shirtSize down from the width-based candidate (rather than solving a closed form) reuses
+  // layoutChildren()'s own formulas so this can never drift out of sync with what actually gets
+  // rendered.
+  private static final double ROW_HEIGHT_SAFETY_FACTOR = 1.3;
+
+  private static double constrainShirtSizeToRowGap(final double widthBasedShirtSize, final double height) {
+
+    final double goalkeeperY = height * GOALKEEPER_Y_FRACTION;
+    final double halfwayLineY = height * HALFWAY_LINE_Y_FRACTION;
+
+    for (double candidate = widthBasedShirtSize; candidate > PitchPlayer.MIN_SHIRT_SIZE; candidate -= 1) {
+      final double cardHeight = candidate + PitchPlayer.cardPadding(candidate);
+      final double fixtureLineHeight = PitchPlayer.detailFontSize(candidate) + PitchPlayer.labelSpacing(candidate);
+      final double forwardBottomGap = PitchPlayer.detailFontSize(candidate) / 2.0 + candidate * 0.05;
+
+      final double forwardY = halfwayLineY - cardHeight - fixtureLineHeight - forwardBottomGap;
+      final double rowGap = (forwardY - goalkeeperY) / 3.0;
+
+      if (rowGap >= (cardHeight + fixtureLineHeight) * ROW_HEIGHT_SAFETY_FACTOR) {
+        return candidate;
+      }
+    }
+
+    return PitchPlayer.MIN_SHIRT_SIZE;
   }
 
   private void placeRow(
