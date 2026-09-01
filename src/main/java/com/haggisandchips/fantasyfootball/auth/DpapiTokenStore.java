@@ -1,6 +1,7 @@
 package com.haggisandchips.fantasyfootball.auth;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -22,8 +23,15 @@ import java.util.concurrent.TimeUnit;
 // machine, and a roamed copy of this file can fail to decrypt on a different machine unless
 // credential roaming is explicitly configured (it isn't, by default), so roaming it would be
 // actively misleading.
+//
+// Windows-only (see WindowsCondition) - powershell.exe doesn't exist elsewhere, so without this
+// gate every load/save/clear would just fail there (silently, since the catch blocks below treat
+// any failure as "nothing to load"/"couldn't persist"), meaning the token would never actually
+// survive a relaunch on any other OS. See KeychainTokenStore (macOS) and FileTokenStore (Linux/
+// everything else) for the equivalents used there.
 @Slf4j
 @Component
+@Conditional(WindowsCondition.class)
 public class DpapiTokenStore implements TokenStore {
 
   private static final Path TOKEN_FILE = Paths.get(
