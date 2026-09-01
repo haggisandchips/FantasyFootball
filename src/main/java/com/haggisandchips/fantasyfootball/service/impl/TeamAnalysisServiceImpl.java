@@ -9,11 +9,13 @@ import com.haggisandchips.fantasyfootball.calculation.TransferSelector;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.Position;
 import com.haggisandchips.fantasyfootball.domain.Squad;
+import com.haggisandchips.fantasyfootball.domain.SquadSubstitution;
 import com.haggisandchips.fantasyfootball.domain.Strategy;
 import com.haggisandchips.fantasyfootball.domain.Team;
 import com.haggisandchips.fantasyfootball.domain.TransferSuggestion;
 import com.haggisandchips.fantasyfootball.fpl.PlayerDataClient;
 import com.haggisandchips.fantasyfootball.service.TeamAnalysisService;
+import com.haggisandchips.fantasyfootball.squad.MyTeamExecutor;
 import com.haggisandchips.fantasyfootball.squad.SquadProvider;
 import com.haggisandchips.fantasyfootball.squad.TransferExecutor;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +46,9 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
 
   // Empty in stub mode (FPL_MY_SQUAD_FILE set), where there's no live account to submit to.
   private final Optional<TransferExecutor> transferExecutor;
+
+  // Empty in stub mode, same as transferExecutor above.
+  private final Optional<MyTeamExecutor> myTeamExecutor;
 
   private static Map<Position, List<Player>> groupAvailablePlayers(final List<Player> allPlayers) {
 
@@ -143,5 +148,20 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
         .orElseThrow(() -> new IllegalStateException(
             "Transfer execution isn't available - unset FPL_MY_SQUAD_FILE to use a live account"))
         .execute(mySquad.getTransferContext(), suggestion);
+  }
+
+  @Override
+  public void executeSubstitution(final Squad mySquad, final SquadSubstitution substitution)
+      throws IOException, InterruptedException {
+
+    if (mySquad.getTransferContext() == null) {
+      throw new IllegalStateException(
+          "This squad has no live FPL entry to submit to (unset FPL_MY_SQUAD_FILE to use a live account)");
+    }
+
+    myTeamExecutor
+        .orElseThrow(() -> new IllegalStateException(
+            "Squad updates aren't available - unset FPL_MY_SQUAD_FILE to use a live account"))
+        .execute(mySquad.getTransferContext(), substitution);
   }
 }

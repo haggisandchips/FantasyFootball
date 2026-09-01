@@ -66,6 +66,12 @@ class PitchView extends Region {
 
   private final Squad squad;
 
+  // Computed once by the caller (MySquadTab) and shared with its "Make Substitutions" button -
+  // OptimalElevenSelector.select() breaks ties with its own internal Random, so recomputing it a
+  // second time here could show arrows/badges for a different tied lineup than the one the button
+  // would actually submit.
+  private final OptimalElevenSelector.Result optimal;
+
   private final Line leftSideline = line();
 
   private final Line rightSideline = line();
@@ -95,9 +101,10 @@ class PitchView extends Region {
       Comparator.comparingInt(Player::getPoints).reversed()
           .thenComparingInt(Player::getFantasyId);
 
-  PitchView(final Squad squad) {
+  PitchView(final Squad squad, final OptimalElevenSelector.Result optimal) {
 
     this.squad = squad;
+    this.optimal = optimal;
     getStyleClass().add("pitch");
     // Deliberately no minimum beyond JavaFX's own default (0x0) - cards are meant to keep shrinking
     // with whatever room the pitch is given (see PitchPlayer.cardPadding(), which scales
@@ -133,9 +140,6 @@ class PitchView extends Region {
 
   private void buildPlayerNodes() {
 
-    final List<Player> fullSquad = new ArrayList<>(squad.getStartingEleven());
-    fullSquad.addAll(squad.getSubstitutes());
-    final OptimalElevenSelector.Result optimal = OptimalElevenSelector.select(fullSquad);
     final Set<Integer> suggestedStartingIds =
         optimal.startingEleven().stream().map(Player::getFantasyId).collect(Collectors.toSet());
 
@@ -150,7 +154,7 @@ class PitchView extends Region {
       for (final Player player : positionPlayers) {
         final PitchPlayer.Arrow arrow =
             suggestedStartingIds.contains(player.getFantasyId()) ? null : PitchPlayer.Arrow.DOWN;
-        final PitchPlayer node = PitchPlayer.of(player, captaincyBadges(player, optimal), arrow);
+        final PitchPlayer node = PitchPlayer.of(player, captaincyBadges(player), arrow);
         nodes.add(node);
         getChildren().add(node);
       }
@@ -160,7 +164,7 @@ class PitchView extends Region {
     for (final Player player : orderedSubstitutes()) {
       final PitchPlayer.Arrow arrow =
           suggestedStartingIds.contains(player.getFantasyId()) ? PitchPlayer.Arrow.UP : null;
-      final PitchPlayer node = PitchPlayer.ofSubstitute(player, captaincyBadges(player, optimal), arrow);
+      final PitchPlayer node = PitchPlayer.ofSubstitute(player, captaincyBadges(player), arrow);
       substituteNodes.add(node);
       getChildren().add(node);
     }
@@ -189,7 +193,7 @@ class PitchView extends Region {
   // A player can end up with both an outgoing and an incoming badge (e.g. demoted from captain to
   // vice while someone else is promoted to captain) - PitchPlayer stacks them top-to-bottom rather
   // than overlaying, per the badge order added here (existing choice first, new suggestion after).
-  private List<PitchPlayer.CaptaincyBadge> captaincyBadges(final Player player, final OptimalElevenSelector.Result optimal) {
+  private List<PitchPlayer.CaptaincyBadge> captaincyBadges(final Player player) {
 
     final List<PitchPlayer.CaptaincyBadge> badges = new ArrayList<>();
 

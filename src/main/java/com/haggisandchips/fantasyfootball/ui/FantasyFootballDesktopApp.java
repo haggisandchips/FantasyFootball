@@ -207,18 +207,20 @@ public class FantasyFootballDesktopApp extends Application {
     squadTask.setOnSucceeded(event -> {
       final Squad mySquad = squadTask.getValue();
       analysisReporter.reportSquad(mySquad);
-      mySquadTab.setContent(new MySquadTab(mySquad));
 
       if (mySquad.getTeamName() != null) {
         stage.setTitle("Fantasy Football - " + mySquad.getTeamName());
       }
 
-      // A submitted transfer - from either the Transfers tab or the Killer Team tab's "Use This
-      // Team" - changes the live squad (picks, bank, free transfers) underneath both tabs, so both
-      // share this one re-fetch-and-recalculate-from-scratch callback rather than each patching
-      // in-memory state themselves.
+      // A submitted transfer or substitution - from the My Squad tab's own "Make Substitution", the
+      // Transfers tab, or the Killer Team tab's "Use This Team" - changes the live squad (picks,
+      // bank, free transfers) underneath every tab, so they all share this one
+      // re-fetch-and-recalculate-from-scratch callback rather than each patching in-memory state
+      // themselves.
       final Runnable onTransferExecuted = () -> loadMySquad(
           stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, killerTeamTab, allPlayers);
+
+      mySquadTab.setContent(new MySquadTab(mySquad, teamAnalysisService, onTransferExecuted));
 
       // Needs mySquad (for the default budget - see KillerTeamTab.availableFunds()), so wired here
       // rather than as soon as allPlayers is available. A no-op after the first call (a submitted

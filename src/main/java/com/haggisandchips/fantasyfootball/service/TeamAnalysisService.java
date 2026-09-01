@@ -5,6 +5,7 @@ import com.haggisandchips.fantasyfootball.calculation.TransferSearchProgressList
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.Position;
 import com.haggisandchips.fantasyfootball.domain.Squad;
+import com.haggisandchips.fantasyfootball.domain.SquadSubstitution;
 import com.haggisandchips.fantasyfootball.domain.Strategy;
 import com.haggisandchips.fantasyfootball.domain.Team;
 import com.haggisandchips.fantasyfootball.domain.TransferSuggestion;
@@ -49,4 +50,9 @@ public interface TeamAnalysisService {
   // possible when mySquad.getTransferContext() is non-null - callers should check that before
   // offering this at all (see TransfersTab).
   void executeTransfer(Squad mySquad, TransferSuggestion suggestion) throws IOException, InterruptedException;
+
+  // Submits a starting-XI/bench swap and/or captaincy change to the live FPL account the given
+  // squad was fetched from - see SquadSubstitution. Only possible when
+  // mySquad.getTransferContext() is non-null, same as executeTransfer above.
+  void executeSubstitution(Squad mySquad, SquadSubstitution substitution) throws IOException, InterruptedException;
 }

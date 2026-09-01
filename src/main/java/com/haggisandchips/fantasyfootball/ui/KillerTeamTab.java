@@ -568,7 +568,10 @@ class KillerTeamTab extends BorderPane {
         team.getCostNow(), maxBudget.subtract(team.getCostNow()), 0, team,
         picked.startingEleven(), picked.substitutes(), null, null, team.getPoints(), null, null);
 
-    setCenter(new MySquadTab(squad));
+    // teamAnalysisService/onTransferExecuted are never touched here - this squad's own
+    // TransferContext is always null (see Squad above), so MySquadTab never shows its
+    // substitution button for it.
+    setCenter(new MySquadTab(squad, null, null));
 
     // Only offered against a real, logged-in FPL account - there's nothing to submit a transfer to
     // otherwise (stub mode, or mySquad not yet loaded). Matches TransfersTab's own "Make this
