@@ -10,12 +10,16 @@ import com.haggisandchips.fantasyfootball.domain.Squad;
 import com.haggisandchips.fantasyfootball.domain.Status;
 import com.haggisandchips.fantasyfootball.domain.Strategy;
 import com.haggisandchips.fantasyfootball.domain.Team;
+import com.haggisandchips.fantasyfootball.domain.TransferSuggestion;
 import com.haggisandchips.fantasyfootball.service.TeamAnalysisService;
 import javafx.collections.FXCollections;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.Spinner;
@@ -35,8 +39,11 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -101,6 +108,15 @@ class KillerTeamTab extends BorderPane {
   private Map<Position, List<Player>> availablePlayersByPosition;
 
   private BiConsumer<Strategy, Team> onResult;
+
+  // Refreshed on every init() call (unlike the rest of this tab's state, which is one-time - see
+  // init()'s own comment) so "Use This Team" always computes its deltas against the squad as it
+  // currently stands, even after it's changed underneath an already-displayed (cached) result.
+  private Squad mySquad;
+
+  // Re-fetches and rebuilds everything from the live squad outward - shared with TransfersTab's own
+  // "Make this transfer" button (see FantasyFootballDesktopApp) since both change the same live squad.
+  private Runnable onTransferExecuted;
 
   // The budget field reverts to this if the user leaves it empty - not otherwise used once init()
   // has run once (a later squad reload must not silently change what's already on screen).
@@ -254,12 +270,17 @@ class KillerTeamTab extends BorderPane {
     return boxes;
   }
 
-  // A no-op after the first call - a submitted transfer (see FantasyFootballDesktopApp) re-fetches
-  // the squad and calls this again, but that must not reset the user's choices or throw away the
-  // cache just because the live squad changed elsewhere.
+  // The one-time setup below is a no-op after the first call - a submitted transfer (see
+  // FantasyFootballDesktopApp) re-fetches the squad and calls this again, but that must not reset
+  // the user's choices or throw away the cache just because the live squad changed elsewhere.
+  // mySquad/onTransferExecuted are the exception - refreshed unconditionally on every call, so
+  // "Use This Team" (see useThisTeamBar()) always has the current squad to diff against.
   void init(
       final TeamAnalysisService teamAnalysisService, final List<Player> allPlayers, final Squad mySquad,
-      final BiConsumer<Strategy, Team> onResult) {
+      final BiConsumer<Strategy, Team> onResult, final Runnable onTransferExecuted) {
+
+    this.mySquad = mySquad;
+    this.onTransferExecuted = onTransferExecuted;
 
     if (this.teamAnalysisService != null) {
       return;
@@ -471,6 +492,7 @@ class KillerTeamTab extends BorderPane {
 
     runningTask = task;
     setCenter(FantasyFootballDesktopApp.progressPane(task));
+    setBottom(null);
 
     task.setOnSucceeded(event -> {
       // Only if this is still the tracked task - a narrow race exists where cancel() is called just
@@ -521,6 +543,7 @@ class KillerTeamTab extends BorderPane {
     // exactly as init() set it ("Click Calculate..."), so re-showing it is the same as resetting to
     // the tab's original starting state.
     setCenter(new StackPane(statusLabel));
+    setBottom(null);
   }
 
   // KillerTeamFinder.find() returns null when no affordable, valid team exists for this budget -
@@ -531,6 +554,7 @@ class KillerTeamTab extends BorderPane {
     if (team == null) {
       setCenter(new StackPane(new Label(String.format(
           "No affordable, valid team found for a £%.1fm budget.", maxBudget))));
+      setBottom(null);
     } else {
       showResult(team, maxBudget);
     }
@@ -545,11 +569,148 @@ class KillerTeamTab extends BorderPane {
         picked.startingEleven(), picked.substitutes(), null, null, team.getPoints(), null, null);
 
     setCenter(new MySquadTab(squad));
+
+    // Only offered against a real, logged-in FPL account - there's nothing to submit a transfer to
+    // otherwise (stub mode, or mySquad not yet loaded). Matches TransfersTab's own "Make this
+    // transfer" button, which is hidden the same way.
+    setBottom(mySquad != null && mySquad.getTransferContext() != null ? useThisTeamBar(team) : null);
   }
 
   void showError(final String message) {
 
     setCenter(new StackPane(new Label("Failed to calculate: " + message)));
+    setBottom(null);
+  }
+
+  // The transfers needed to turn mySquad into killerTeam - every squad player killerTeam doesn't
+  // keep, paired position-by-position with every killerTeam player mySquad doesn't already have.
+  // Both are always full, valid squads (2 GOALKEEPER/5 DEFENDER/5 MIDFIELDER/3 FORWARD - see
+  // Position), so the two lists for a given position are always the same size; which particular
+  // leaving player gets paired with which particular arriving one within a position doesn't matter
+  // to FPL (AuthenticatedTransferExecutor submits each pick independently), only that the pairing is
+  // complete.
+  private static Map<Player, Player> computeTransfers(final Squad mySquad, final Team killerTeam) {
+
+    final Set<Integer> killerTeamIds = killerTeam.getPlayers().stream()
+        .map(Player::getFantasyId).collect(Collectors.toSet());
+    final Set<Integer> squadIds = mySquad.getTeam().getPlayers().stream()
+        .map(Player::getFantasyId).collect(Collectors.toSet());
+
+    final Map<Position, List<Player>> outByPosition = mySquad.getTeam().getPlayers().stream()
+        .filter(player -> !killerTeamIds.contains(player.getFantasyId()))
+        .collect(Collectors.groupingBy(Player::getPosition));
+    final Map<Position, List<Player>> inByPosition = killerTeam.getPlayers().stream()
+        .filter(player -> !squadIds.contains(player.getFantasyId()))
+        .collect(Collectors.groupingBy(Player::getPosition));
+
+    final Map<Player, Player> transfers = new LinkedHashMap<>();
+    for (final Position position : Position.values()) {
+      final List<Player> out = outByPosition.getOrDefault(position, List.of());
+      final List<Player> in = inByPosition.getOrDefault(position, List.of());
+
+      if (out.size() != in.size()) {
+        // Should be unreachable given both sides are always valid 2/5/5/3 squads - guarding it
+        // anyway rather than letting a mismatch throw a bare IndexOutOfBoundsException below, since
+        // this feeds a real, irreversible FPL submission.
+        throw new IllegalStateException(String.format(
+            "Could not match up %s transfers (%d leaving, %d arriving) - not submitting.",
+            position, out.size(), in.size()));
+      }
+
+      for (int i = 0; i < out.size(); i++) {
+        transfers.put(out.get(i), in.get(i));
+      }
+    }
+
+    return transfers;
+  }
+
+  // Only shown when mySquad.getTransferContext() is set - see showResult(). Mirrors TransfersTab's
+  // own "Make this transfer" button/status-label pairing.
+  private HBox useThisTeamBar(final Team killerTeam) {
+
+    final Button useButton = new Button("Use This Team");
+    final Label statusLabel = new Label();
+    statusLabel.getStyleClass().add("card-detail");
+
+    useButton.setOnAction(event -> {
+      final Map<Player, Player> transfers;
+      try {
+        transfers = computeTransfers(mySquad, killerTeam);
+      } catch (final IllegalStateException e) {
+        new Alert(AlertType.ERROR, e.getMessage()).showAndWait();
+        return;
+      }
+
+      if (transfers.isEmpty()) {
+        new Alert(AlertType.INFORMATION, "Your squad already matches this team - no transfers needed.").showAndWait();
+        return;
+      }
+
+      if (!confirmed(transfers)) {
+        return;
+      }
+
+      final TransferSuggestion suggestion = new TransferSuggestion(killerTeam, transfers);
+
+      useButton.setDisable(true);
+      statusLabel.setText("Submitting...");
+
+      final Task<Void> submitTask = new Task<>() {
+        @Override
+        protected Void call() throws Exception {
+
+          teamAnalysisService.executeTransfer(mySquad, suggestion);
+          return null;
+        }
+      };
+
+      submitTask.setOnSucceeded(e -> {
+        statusLabel.setText("Submitted to FPL.");
+        new Alert(AlertType.INFORMATION, "Transfer(s) submitted successfully.").showAndWait();
+        onTransferExecuted.run();
+      });
+
+      submitTask.setOnFailed(e -> {
+        useButton.setDisable(false);
+        final String message = submitTask.getException().getMessage();
+        statusLabel.setText("Failed: " + message);
+        new Alert(AlertType.ERROR, "Transfer submission failed:\n\n" + message).showAndWait();
+      });
+
+      Thread.ofVirtual().name("submit-killer-team-transfer").start(submitTask);
+    });
+
+    final HBox bar = new HBox(12, useButton, statusLabel);
+    bar.setAlignment(Pos.CENTER);
+    bar.setPadding(new Insets(12));
+    return bar;
+  }
+
+  // Mirrors TransfersTab's own confirmed(TransferSuggestion) - duplicated rather than shared since
+  // that one is keyed to a single suggestion's own transfer map, and pulling a shared helper out for
+  // one identical loop body isn't worth the indirection.
+  private boolean confirmed(final Map<Player, Player> transfers) {
+
+    final StringBuilder summary = new StringBuilder();
+    for (final Map.Entry<Player, Player> transfer : transfers.entrySet()) {
+      if (!summary.isEmpty()) {
+        summary.append("\n");
+      }
+      summary.append(String.format(
+          "OUT: %s (£%.1fm) -> IN: %s (£%.1fm)",
+          transfer.getKey().getName(), transfer.getKey().getSellingPrice(),
+          transfer.getValue().getName(), transfer.getValue().getCostNow()));
+    }
+
+    final Alert confirmation = new Alert(AlertType.CONFIRMATION, String.format(
+        "This will submit the following %d transfer(s) directly to your live FPL team for gameweek %d "
+            + "and cannot be undone through this app:\n\n%s",
+        transfers.size(), mySquad.getTransferContext().currentEvent(), summary));
+    confirmation.setHeaderText("Confirm transfers");
+
+    final Optional<ButtonType> result = confirmation.showAndWait();
+    return result.isPresent() && result.get() == ButtonType.OK;
   }
 
   // Cache key for a killer-team calculation - equal keys (via the generated equals/hashCode, which

@@ -213,14 +213,22 @@ public class FantasyFootballDesktopApp extends Application {
         stage.setTitle("Fantasy Football - " + mySquad.getTeamName());
       }
 
+      // A submitted transfer - from either the Transfers tab or the Killer Team tab's "Use This
+      // Team" - changes the live squad (picks, bank, free transfers) underneath both tabs, so both
+      // share this one re-fetch-and-recalculate-from-scratch callback rather than each patching
+      // in-memory state themselves.
+      final Runnable onTransferExecuted = () -> loadMySquad(
+          stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, killerTeamTab, allPlayers);
+
       // Needs mySquad (for the default budget - see KillerTeamTab.availableFunds()), so wired here
       // rather than as soon as allPlayers is available. A no-op after the first call (a submitted
       // transfer re-runs loadMySquad, but the killer team's own strategy/budget selection and cache
-      // shouldn't be reset just because the live squad changed elsewhere).
-      killerTeamTab.init(teamAnalysisService, allPlayers, mySquad, analysisReporter::reportKillerTeam);
+      // shouldn't be reset just because the live squad changed elsewhere) - though it does still
+      // refresh its own mySquad reference every call, so "Use This Team" always computes deltas
+      // against the current squad even when the rest of its state is left alone.
+      killerTeamTab.init(teamAnalysisService, allPlayers, mySquad, analysisReporter::reportKillerTeam, onTransferExecuted);
 
-      loadTransferSuggestions(
-          stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, killerTeamTab, mySquad, allPlayers);
+      loadTransferSuggestions(teamAnalysisService, analysisReporter, transfersTab, mySquad, allPlayers, onTransferExecuted);
     });
 
     squadTask.setOnFailed(event -> {
@@ -233,9 +241,8 @@ public class FantasyFootballDesktopApp extends Application {
   }
 
   private void loadTransferSuggestions(
-      final Stage stage, final TeamAnalysisService teamAnalysisService, final AnalysisReporter analysisReporter,
-      final Tab mySquadTab, final Tab transfersTab, final KillerTeamTab killerTeamTab, final Squad mySquad,
-      final List<Player> allPlayers) {
+      final TeamAnalysisService teamAnalysisService, final AnalysisReporter analysisReporter,
+      final Tab transfersTab, final Squad mySquad, final List<Player> allPlayers, final Runnable onTransferExecuted) {
 
     final Task<List<TransferSuggestion>> transfersTask = new Task<>() {
       @Override
@@ -257,11 +264,6 @@ public class FantasyFootballDesktopApp extends Application {
       final List<TransferSuggestion> rawSuggestions = transfersTask.getValue();
       analysisReporter.reportTransferSuggestions(
           Strategy.SCORE, teamAnalysisService.rankTransferSuggestions(rawSuggestions, Strategy.SCORE));
-
-      // A submitted transfer changes the live squad (picks, bank, free transfers) - re-fetch and
-      // recalculate everything from scratch rather than trying to patch the in-memory state.
-      final Runnable onTransferExecuted = () -> loadMySquad(
-          stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, killerTeamTab, allPlayers);
 
       transfersTab.setContent(new TransfersTab(mySquad, rawSuggestions, teamAnalysisService, onTransferExecuted));
     });
