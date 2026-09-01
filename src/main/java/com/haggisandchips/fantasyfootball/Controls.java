@@ -14,6 +14,19 @@ public final class Controls {
 
   public static final int MAX_PERMUTATIONS_PER_SCORE = 5;
 
+  // Killer Team: hard ceiling on the raw C(poolSize, position.getNumber()) combination count
+  // TeamSelector.buildPermutations will attempt to generate for a single position, before any
+  // MAX_PERMUTATIONS_PER_SCORE capping kicks in (that only bounds how many of the *generated*
+  // permutations the later search evaluates per score bucket - generation itself is otherwise
+  // unbounded). GOALKEEPER (pairs) and FORWARD (triples) stay cheap even at a pool of hundreds, but
+  // DEFENDER/MIDFIELDER (five-a-side) explode fast - a threshold low enough to admit ~150 available
+  // defenders yields C(150,5) ~= 591 million, which previously froze the sole JavaFX UI thread
+  // (KillerTeamTab's live "combinations" label rebuilds this on every threshold spinner tick) with
+  // no exception, no progress, and no way to recover short of killing the app. buildPermutations
+  // throws once a position's filtered pool would exceed this, so the caller gets a clear message
+  // instead of a hang.
+  public static final long MAX_RAW_PERMUTATIONS_PER_POSITION = 2_000_000;
+
   // Killer Team: target number of players to keep, per position, when auto-calculating each
   // strategy's default minimum threshold (see KillerTeamTab.calculateDefaultThreshold) - the
   // default is set to the maximum value that still keeps at least this many, i.e. the target-ranked

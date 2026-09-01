@@ -1,12 +1,10 @@
 package com.haggisandchips.fantasyfootball.ui;
 
 import com.haggisandchips.fantasyfootball.Controls;
-import com.haggisandchips.fantasyfootball.calculation.KillerTeamFinder;
 import com.haggisandchips.fantasyfootball.calculation.KillerTeamSearchProgressListener;
 import com.haggisandchips.fantasyfootball.calculation.StartingElevenSelector;
 import com.haggisandchips.fantasyfootball.calculation.TeamSelector;
 import com.haggisandchips.fantasyfootball.domain.Player;
-import com.haggisandchips.fantasyfootball.domain.PlayerLine;
 import com.haggisandchips.fantasyfootball.domain.Position;
 import com.haggisandchips.fantasyfootball.domain.Squad;
 import com.haggisandchips.fantasyfootball.domain.Status;
@@ -39,7 +37,6 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -376,13 +373,13 @@ class KillerTeamTab extends BorderPane {
     thresholdCountLabels.get(position).setText(countMeetingThreshold(position, threshold) + " players");
   }
 
-  // The exact same number Calculate will actually evaluate - builds the real permutations (see
-  // TeamSelector.buildPermutations) at the current threshold values and counts them the same way
-  // KillerTeamFinder.find() does (KillerTeamFinder.countCandidateTeams), rather than a cheaper but
-  // approximate C(n, slots) product that ignores MAX_PERMUTATIONS_PER_SCORE's per-score-bucket cap
-  // and so can drift a long way from what the real search reports. Cheap enough to run live at the
-  // default (~10 players/position) thresholds; if a threshold is pushed high enough to make this
-  // itself slow, that's an honest signal the real search would be slow too.
+  // The exact same number Calculate will actually evaluate, without doing any of the work Calculate
+  // does - TeamSelector.countCappedCombinations gets there via a subset-sum DP over player point
+  // totals rather than by generating a single candidate team, so this stays fast (and safe to run on
+  // this, the FX Application Thread, on every keystroke/scroll) no matter how low a threshold is
+  // pushed. An earlier version of this method built the real permutations to get this number, which
+  // is what let a wide-open threshold (e.g. DEFENDER at 0, admitting the full ~150-player pool) hang
+  // the whole UI thread evaluating hundreds of millions of raw combinations synchronously.
   private void refreshCombinationsEstimate() {
 
     if (availablePlayersByPosition == null) {
@@ -399,10 +396,7 @@ class KillerTeamTab extends BorderPane {
       poolCopy.put(position, new ArrayList<>(availablePlayersByPosition.getOrDefault(position, List.of())));
     }
 
-    final Map<Position, Map<Integer, Set<PlayerLine>>> permutations =
-        TeamSelector.buildPermutations(strategy, poolCopy, currentThresholds);
-    final long total = KillerTeamFinder.countCandidateTeams(permutations);
-
+    final long total = TeamSelector.countCappedCombinations(strategy, poolCopy, currentThresholds);
     combinationsLabel.setText(String.format("%,d combinations", total));
   }
 

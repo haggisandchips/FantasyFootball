@@ -38,7 +38,30 @@ public class PlayerLine implements Comparable<PlayerLine> {
     this.pointsPerGame = pointsPerGame;
   }
 
+  // Ordered primarily by cost ascending - KillerTeamFinder relies on that to take the cheapest few
+  // lines per score bucket. Cost alone isn't enough to make this a valid ordering for a TreeSet
+  // though: TreeSet uses compareTo (not equals/hashCode) to decide uniqueness, so two genuinely
+  // different player combinations that happen to sum to the same cost would otherwise compare equal
+  // and silently collapse into a single entry, dropping a legitimately distinct candidate team from
+  // consideration. Breaking the tie by player id (sorted, so list order doesn't matter) guarantees two
+  // combinations only ever compare equal when they really are the same set of players.
   public int compareTo(final PlayerLine other) {
-    return this.getCostNow().compareTo(other.getCostNow());
+
+    final int costComparison = this.getCostNow().compareTo(other.getCostNow());
+    if (costComparison != 0) {
+      return costComparison;
+    }
+
+    final List<Integer> theseIds = players.stream().map(Player::getFantasyId).sorted().toList();
+    final List<Integer> otherIds = other.players.stream().map(Player::getFantasyId).sorted().toList();
+
+    for (int i = 0; i < theseIds.size(); i++) {
+      final int idComparison = theseIds.get(i).compareTo(otherIds.get(i));
+      if (idComparison != 0) {
+        return idComparison;
+      }
+    }
+
+    return 0;
   }
 }
