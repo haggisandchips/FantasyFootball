@@ -149,6 +149,31 @@
   -fx-background-radius: 20;
   -fx-padding: 1 4 1 4;
 }
+/* An existing C/V choice OptimalElevenSelector no longer picks - see ui.PitchPlayer.CaptaincyBadge */
+.captain-badge-outgoing {
+  -fx-background-color: #e74c3c;
+  -fx-text-fill: white;
+  -fx-font-size: 9px;
+  -fx-font-weight: bold;
+  -fx-background-radius: 20;
+  -fx-padding: 1 4 1 4;
+}
+
+/* Suggested lineup-change arrows (see ui.PitchPlayer.Arrow) - the glyph itself (↑/↓) renders much
+   thinner than the captain-badge circles or the ▲/▼ it replaced, so needs a noticeably larger size
+   to read clearly at a glance, matching how bold TransfersTab's own "→" (.transfer-arrow) reads. */
+.lineup-arrow-up {
+  -fx-text-fill: #2ecc71;
+  -fx-font-size: 22px;
+  -fx-font-weight: bold;
+  -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.85), 3, 0.6, 0, 1);
+}
+.lineup-arrow-down {
+  -fx-text-fill: #e74c3c;
+  -fx-font-size: 22px;
+  -fx-font-weight: bold;
+  -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.85), 3, 0.6, 0, 1);
+}
 
 /* Cards (transfers / injured list / killer team) */
 .card {

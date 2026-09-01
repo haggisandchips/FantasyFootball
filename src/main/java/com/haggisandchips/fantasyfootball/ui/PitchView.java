@@ -1,5 +1,6 @@
 package com.haggisandchips.fantasyfootball.ui;
 
+import com.haggisandchips.fantasyfootball.calculation.OptimalElevenSelector;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.Position;
 import com.haggisandchips.fantasyfootball.domain.Squad;
@@ -15,6 +16,7 @@ import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 // A custom-laid-out Region (not a fixed-size Pane) so the pitch always fills exactly the space
@@ -126,6 +128,12 @@ class PitchView extends Region {
 
   private void buildPlayerNodes() {
 
+    final List<Player> fullSquad = new ArrayList<>(squad.getStartingEleven());
+    fullSquad.addAll(squad.getSubstitutes());
+    final OptimalElevenSelector.Result optimal = OptimalElevenSelector.select(fullSquad);
+    final Set<Integer> suggestedStartingIds =
+        optimal.startingEleven().stream().map(Player::getFantasyId).collect(Collectors.toSet());
+
     final Map<Position, List<Player>> byPosition =
         squad.getStartingEleven().stream().collect(Collectors.groupingBy(Player::getPosition));
 
@@ -135,7 +143,9 @@ class PitchView extends Region {
 
       final List<PitchPlayer> nodes = new ArrayList<>();
       for (final Player player : positionPlayers) {
-        final PitchPlayer node = PitchPlayer.of(player, captainBadge(player));
+        final PitchPlayer.Arrow arrow =
+            suggestedStartingIds.contains(player.getFantasyId()) ? null : PitchPlayer.Arrow.DOWN;
+        final PitchPlayer node = PitchPlayer.of(player, captaincyBadges(player, optimal), arrow);
         nodes.add(node);
         getChildren().add(node);
       }
@@ -143,7 +153,9 @@ class PitchView extends Region {
     }
 
     for (final Player player : orderedSubstitutes()) {
-      final PitchPlayer node = PitchPlayer.ofSubstitute(player);
+      final PitchPlayer.Arrow arrow =
+          suggestedStartingIds.contains(player.getFantasyId()) ? PitchPlayer.Arrow.UP : null;
+      final PitchPlayer node = PitchPlayer.ofSubstitute(player, captaincyBadges(player, optimal), arrow);
       substituteNodes.add(node);
       getChildren().add(node);
     }
@@ -166,15 +178,30 @@ class PitchView extends Region {
     return ordered;
   }
 
-  private String captainBadge(final Player player) {
+  // The actual current C/V badge (if this player holds it) plus, when OptimalElevenSelector picked
+  // someone else, a second badge marking that outgoing choice red; and separately, if this player is
+  // the *new* suggested captain/vice and doesn't already hold that badge, an incoming (green) one.
+  // A player can end up with both an outgoing and an incoming badge (e.g. demoted from captain to
+  // vice while someone else is promoted to captain) - PitchPlayer stacks them top-to-bottom rather
+  // than overlaying, per the badge order added here (existing choice first, new suggestion after).
+  private List<PitchPlayer.CaptaincyBadge> captaincyBadges(final Player player, final OptimalElevenSelector.Result optimal) {
+
+    final List<PitchPlayer.CaptaincyBadge> badges = new ArrayList<>();
 
     if (player == squad.getCaptain()) {
-      return "C";
-    } else if (player == squad.getViceCaptain()) {
-      return "V";
-    } else {
-      return null;
+      badges.add(new PitchPlayer.CaptaincyBadge("C", player != optimal.captain()));
     }
+    if (player == squad.getViceCaptain()) {
+      badges.add(new PitchPlayer.CaptaincyBadge("V", player != optimal.viceCaptain()));
+    }
+    if (player == optimal.captain() && player != squad.getCaptain()) {
+      badges.add(new PitchPlayer.CaptaincyBadge("C", false));
+    }
+    if (player == optimal.viceCaptain() && player != squad.getViceCaptain()) {
+      badges.add(new PitchPlayer.CaptaincyBadge("V", false));
+    }
+
+    return badges;
   }
 
   @Override

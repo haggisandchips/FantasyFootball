@@ -10,12 +10,28 @@ import javafx.scene.image.ImageView;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
+import java.util.List;
+
 // A player rendered as their real club shirt (fetched from FPL's own CDN, keyed by team_code -
 // see Player.teamCode), their name, a secondary cost/points line, and a third line for their next
 // fixture - used both positioned on the pitch (where setShirtSize() lets PitchView shrink/grow it
 // as the window resizes) and in ordinary flow layouts (TransfersTab's suggestion pairs and injured
 // list, always at MAX_SHIRT_SIZE). The killer team list renders its own cards, not PitchPlayer.
 final class PitchPlayer extends VBox {
+
+  // A captaincy indicator - "outgoing" (red) marks the current C/V choice being replaced by
+  // OptimalElevenSelector's suggestion, "outgoing" false (the existing accent green) marks either an
+  // unchanged choice or a newly suggested one. Rendered in the shirt's top-right corner, centered and
+  // stacked top-to-bottom above any arrow (see the constructor) so nothing overlays.
+  record CaptaincyBadge(String text, boolean outgoing) {
+  }
+
+  // Which way a player is being suggested to move relative to the squad's actual current lineup -
+  // DOWN for a current starter OptimalElevenSelector would bench, UP for a current substitute it
+  // would start. Rendered top-right, centered and below any captaincy badges.
+  enum Arrow {
+    UP, DOWN
+  }
 
   static final double MAX_SHIRT_SIZE = 100;
 
@@ -42,22 +58,25 @@ final class PitchPlayer extends VBox {
 
   static PitchPlayer of(final Player player) {
 
-    return new PitchPlayer(player, null, false);
+    return new PitchPlayer(player, List.of(), null, false);
   }
 
-  static PitchPlayer of(final Player player, final String badge) {
+  // Used by PitchView for the starting XI - badges/arrow carry the OptimalElevenSelector overlay
+  // (see PitchView.captaincyBadges/arrowFor); an empty list/null arrow renders neither.
+  static PitchPlayer of(final Player player, final List<CaptaincyBadge> badges, final Arrow arrow) {
 
-    return new PitchPlayer(player, badge, false);
+    return new PitchPlayer(player, badges, arrow, false);
   }
 
   // Substitutes aren't shown in a formation row, so their position isn't otherwise obvious -
   // shown as part of the detail line instead of a separate badge to keep the card compact.
-  static PitchPlayer ofSubstitute(final Player player) {
+  static PitchPlayer ofSubstitute(final Player player, final List<CaptaincyBadge> badges, final Arrow arrow) {
 
-    return new PitchPlayer(player, null, true);
+    return new PitchPlayer(player, badges, arrow, true);
   }
 
-  private PitchPlayer(final Player player, final String badge, final boolean showPosition) {
+  private PitchPlayer(
+      final Player player, final List<CaptaincyBadge> badges, final Arrow arrow, final boolean showPosition) {
 
     // Loaded once at the highest size we'll ever display, then scaled down for display via
     // ImageView's fit properties (setShirtSize()) - backgroundLoading avoids blocking the JavaFX
@@ -67,15 +86,38 @@ final class PitchPlayer extends VBox {
     shirt = new ImageView(shirtImage);
     shirt.setPreserveRatio(true);
 
-    // Shirt defaults to centered (StackPane's default alignment); only the badge gets a per-child
-    // override - setting the StackPane's own alignment instead would shift the shirt too.
+    // Shirt defaults to centered (StackPane's default alignment); only the indicator stack gets a
+    // per-child override - setting the StackPane's own alignment instead would shift the shirt too.
     final StackPane shirtPane = new StackPane(shirt);
 
-    if (badge != null) {
-      final Label badgeLabel = new Label(badge);
-      badgeLabel.getStyleClass().add("captain-badge");
-      StackPane.setAlignment(badgeLabel, Pos.TOP_RIGHT);
-      shirtPane.getChildren().add(badgeLabel);
+    if (arrow != null || !badges.isEmpty()) {
+      // Captaincy badges first, then the arrow below - all in one top-right column, centered on
+      // each other (badges and the arrow glyph aren't the same width) so a player with both (e.g.
+      // benched while also losing the captaincy) stacks cleanly instead of overlapping.
+      final VBox indicatorStack = new VBox(2);
+      indicatorStack.setAlignment(Pos.TOP_CENTER);
+      // Without this, StackPane stretches the VBox (its default max width is unbounded) to the
+      // shirt's full width, and TOP_CENTER then centers the icons across the whole shirt instead of
+      // just relative to each other - shrinking it to its own content keeps the column narrow so
+      // StackPane.setAlignment below can still pin it to the top-right corner.
+      indicatorStack.setMaxWidth(VBox.USE_PREF_SIZE);
+
+      for (final CaptaincyBadge captaincyBadge : badges) {
+        final Label badgeLabel = new Label(captaincyBadge.text());
+        badgeLabel.getStyleClass().add(captaincyBadge.outgoing() ? "captain-badge-outgoing" : "captain-badge");
+        indicatorStack.getChildren().add(badgeLabel);
+      }
+
+      if (arrow != null) {
+        // Solid black arrow (U+2B06/U+2B07), not the thin U+2191/U+2193 stroke - visually confirmed
+        // against both pitch-grass shades to be the one that actually reads at card size.
+        final Label arrowLabel = new Label(arrow == Arrow.UP ? "⬆" : "⬇");
+        arrowLabel.getStyleClass().add(arrow == Arrow.UP ? "lineup-arrow-up" : "lineup-arrow-down");
+        indicatorStack.getChildren().add(arrowLabel);
+      }
+
+      StackPane.setAlignment(indicatorStack, Pos.TOP_RIGHT);
+      shirtPane.getChildren().add(indicatorStack);
     }
 
     nameLabel = new Label(player.getName());
