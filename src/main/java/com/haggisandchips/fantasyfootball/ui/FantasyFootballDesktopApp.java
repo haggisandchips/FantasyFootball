@@ -1,6 +1,8 @@
 package com.haggisandchips.fantasyfootball.ui;
 
 import com.haggisandchips.fantasyfootball.FantasyFootballApplication;
+import com.haggisandchips.fantasyfootball.auth.FplTokenHolder;
+import com.haggisandchips.fantasyfootball.auth.TokenStore;
 import com.haggisandchips.fantasyfootball.calculation.TransferSearchProgressListener;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.Squad;
@@ -14,11 +16,15 @@ import javafx.concurrent.Task;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Label;
+import javafx.scene.control.Menu;
+import javafx.scene.control.MenuBar;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.image.Image;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
@@ -31,8 +37,9 @@ import org.springframework.context.ConfigurableApplicationContext;
 import java.util.List;
 
 // JavaFX and Spring Boot each want to own the app's lifecycle, so this class bridges them: init()
-// (called by the JavaFX launcher before start()) boots a headless Spring context to get at the
-// same beans the console runner used, and stop() closes it again on window close.
+// (called by the JavaFX launcher before start()) boots a web-server-less Spring context (see
+// .headless(false) below for the unrelated AWT sense of "headless") to get at the same beans the
+// console runner used, and stop() closes it again on window close.
 @Slf4j
 public class FantasyFootballDesktopApp extends Application {
 
@@ -64,11 +71,20 @@ public class FantasyFootballDesktopApp extends Application {
 
     springContext = new SpringApplicationBuilder(FantasyFootballApplication.class)
         .web(WebApplicationType.NONE)
+        // Spring Boot defaults java.awt.headless to true; Toolkit.getSystemClipboard() (used by
+        // FplLoginDialog to pre-fill a pasted token from the clipboard) throws HeadlessException
+        // under that default, so it has to be turned off.
+        .headless(false)
         .run(getParameters().getRaw().toArray(new String[0]));
   }
 
   @Override
   public void start(final Stage stage) {
+
+    final String squadFile = springContext.getEnvironment().getProperty("fpl.my-squad-file");
+    final boolean liveMode = squadFile == null || squadFile.isBlank();
+    final FplTokenHolder tokenHolder = springContext.getBean(FplTokenHolder.class);
+    final TokenStore tokenStore = springContext.getBean(TokenStore.class);
 
     final Tab mySquadTab = new Tab("My Squad", loadingPane());
     mySquadTab.setClosable(false);
@@ -84,8 +100,17 @@ public class FantasyFootballDesktopApp extends Application {
     killerTeamTabWrapper.setClosable(false);
 
     final TabPane tabPane = new TabPane(mySquadTab, transfersTab, killerTeamTabWrapper);
+    VBox.setVgrow(tabPane, Priority.ALWAYS);
 
-    final Scene scene = new Scene(tabPane, 1140, 1020);
+    final Runnable reload = () ->
+        loadSquadThenTransfers(stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, killerTeamTab);
+
+    final VBox root = new VBox(tabPane);
+    if (liveMode) {
+      root.getChildren().add(0, buildMenuBar(stage, tokenHolder, tokenStore, reload));
+    }
+
+    final Scene scene = new Scene(root, 1140, 1020);
     scene.getStylesheets().add(getClass().getResource("/css/app.css").toExternalForm());
 
     stage.setTitle("Fantasy Football");
@@ -93,7 +118,49 @@ public class FantasyFootballDesktopApp extends Application {
     stage.getIcons().addAll(loadIcons());
     stage.show();
 
-    loadSquadThenTransfers(stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, killerTeamTab);
+    if (liveMode && tokenHolder.get().isEmpty()) {
+      FplLoginDialog.showAndCaptureToken(stage).ifPresent(token -> {
+        tokenHolder.set(token);
+        tokenStore.save(token);
+      });
+    }
+
+    reload.run();
+  }
+
+  // Only added in live mode (FPL_MY_SQUAD_FILE unset) - in stub mode there's no live account to
+  // log in to.
+  private MenuBar buildMenuBar(
+      final Stage stage, final FplTokenHolder tokenHolder, final TokenStore tokenStore, final Runnable onAuthChanged) {
+
+    final MenuItem loginItem = new MenuItem("Log in to FPL...");
+    final MenuItem logoutItem = new MenuItem("Log out");
+
+    final Runnable refreshMenuState = () -> {
+      final boolean loggedIn = tokenHolder.get().isPresent();
+      loginItem.setDisable(loggedIn);
+      logoutItem.setDisable(!loggedIn);
+    };
+    refreshMenuState.run();
+
+    loginItem.setOnAction(event -> FplLoginDialog.showAndCaptureToken(stage).ifPresentOrElse(
+        token -> {
+          tokenHolder.set(token);
+          tokenStore.save(token);
+          refreshMenuState.run();
+          onAuthChanged.run();
+        },
+        refreshMenuState));
+
+    logoutItem.setOnAction(event -> {
+      tokenHolder.clear();
+      tokenStore.clear();
+      stage.setTitle("Fantasy Football");
+      refreshMenuState.run();
+      onAuthChanged.run();
+    });
+
+    return new MenuBar(new Menu("Account", null, loginItem, logoutItem));
   }
 
   private void loadSquadThenTransfers(

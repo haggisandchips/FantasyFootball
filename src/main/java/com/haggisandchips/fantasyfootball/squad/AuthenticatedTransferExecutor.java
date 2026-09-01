@@ -3,13 +3,14 @@ package com.haggisandchips.fantasyfootball.squad;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.haggisandchips.fantasyfootball.auth.FplAuthClient;
+import com.haggisandchips.fantasyfootball.auth.LiveFplCondition;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.TransferContext;
 import com.haggisandchips.fantasyfootball.domain.TransferSuggestion;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -26,7 +27,7 @@ import java.util.Map;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-@ConditionalOnProperty(prefix = "fpl.auth", name = "enabled", havingValue = "true")
+@Conditional(LiveFplCondition.class)
 public class AuthenticatedTransferExecutor implements TransferExecutor {
 
   private static final URI TRANSFERS_URI = URI.create("https://fantasy.premierleague.com/api/transfers/");

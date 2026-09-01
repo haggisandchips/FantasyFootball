@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.haggisandchips.fantasyfootball.Controls;
 import com.haggisandchips.fantasyfootball.auth.FplAuthClient;
+import com.haggisandchips.fantasyfootball.auth.LiveFplCondition;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.PlayerLine;
 import com.haggisandchips.fantasyfootball.domain.Position;
@@ -14,7 +15,7 @@ import com.haggisandchips.fantasyfootball.fpl.PlayerDataClient;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -26,13 +27,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-// The genuine article, once FPL_AUTH_ENABLED=true and FPL_EMAIL / FPL_PASSWORD are set (see
-// FplSessionAuthClient) - fetches the logged-in user's own entry ID, then their actual picks,
-// bank and free transfers, matching players by their real FPL id rather than by name.
+// The genuine article, used unless FPL_MY_SQUAD_FILE is set (see LiveFplCondition) - fetches the
+// logged-in user's own entry ID, then their actual picks, bank and free transfers, matching
+// players by their real FPL id rather than by name. Needs a token from FplSessionAuthClient,
+// populated by logging in via the desktop UI's Account menu.
 @Component
 @RequiredArgsConstructor
 @Slf4j
-@ConditionalOnProperty(prefix = "fpl.auth", name = "enabled", havingValue = "true")
+@Conditional(LiveFplCondition.class)
 public class AuthenticatedSquadProvider implements SquadProvider {
 
   private static final URI ME_URI = URI.create("https://fantasy.premierleague.com/api/me/");
@@ -112,9 +114,9 @@ public class AuthenticatedSquadProvider implements SquadProvider {
 
     if (me.getPlayer() == null) {
       throw new IOException(
-          "FPL_API_AUTHORIZATION does not look like an authenticated session (got HTTP 200 with no player) - "
-              + "make sure you're actually logged in (not browsing as a guest) and recapture the "
-              + "X-Api-Authorization header from a request to fantasy.premierleague.com/api/my-team/ or /api/me/");
+          "The stored FPL session does not look authenticated (got HTTP 200 with no player) - log out and back "
+              + "in via Account -> Log in to FPL..., making sure you're actually logged in (not browsing as a "
+              + "guest)");
     }
 
     return me.getPlayer().getEntry();

@@ -1,7 +1,7 @@
 package com.haggisandchips.fantasyfootball.auth;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -11,19 +11,19 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 
-// Replays a bearer token captured from a real, already-logged-in browser rather than performing a
+// Replays a bearer token pasted in from a real, already-logged-in browser rather than performing a
 // login itself - Premier League's actual login page is a JS-driven identity provider that a plain
 // HttpClient can't drive. Confirmed the X-Api-Authorization header alone is sufficient (no session
-// cookie needed). Automating capture of this token (e.g. via an embedded browser view) is a
-// planned follow-up once there's a desktop UI to host it.
+// cookie needed). The token itself comes from FplTokenHolder, populated by the paste dialog (see
+// ui.FplLoginDialog).
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "fpl.auth", name = "enabled", havingValue = "true")
+@Conditional(LiveFplCondition.class)
 public class FplSessionAuthClient implements FplAuthClient {
 
   private static final Duration TIMEOUT = Duration.ofSeconds(10L);
 
-  private final FplApiAuthConfig apiAuthConfig;
+  private final FplTokenHolder tokenHolder;
 
   private final HttpClient httpClient = HttpClient.newHttpClient();
 
@@ -46,12 +46,9 @@ public class FplSessionAuthClient implements FplAuthClient {
 
   private HttpRequest.Builder authenticatedRequestBuilder(final URI uri) throws IOException {
 
-    final String authorization = apiAuthConfig.getAuthorization();
+    final String authorization = tokenHolder.get().orElse(null);
     if (authorization == null || authorization.isBlank()) {
-      throw new IOException(
-          "FPL_AUTH_ENABLED is true but FPL_API_AUTHORIZATION is not set - log in to fantasy.premierleague.com "
-              + "in your browser, find a request to fantasy.premierleague.com/api/me/ in dev tools, and copy "
-              + "its X-Api-Authorization request header value into FPL_API_AUTHORIZATION");
+      throw new IOException("Not logged in to FPL - use Account -> Log in to FPL... in the app to authenticate");
     }
 
     return HttpRequest.newBuilder(uri)
@@ -67,7 +64,7 @@ public class FplSessionAuthClient implements FplAuthClient {
       // Body included (not just the status) because a rejected mutating request - e.g. a transfer
       // FPL considers invalid - explains why in its response body, not just the status code.
       final String expiryHint = response.statusCode() == 401 || response.statusCode() == 403
-          ? " - the captured token has likely expired; capture a fresh FPL_API_AUTHORIZATION from your browser"
+          ? " - your FPL session has likely expired; log out and back in via Account -> Log in to FPL..."
           : "";
       throw new IOException(String.format(
           "Authenticated request to %s failed with status %d: %s%s",

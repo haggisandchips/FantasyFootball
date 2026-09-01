@@ -42,7 +42,7 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
 
   private final SquadProvider squadProvider;
 
-  // Empty in stub mode (FPL_AUTH_ENABLED not "true"), where there's no live account to submit to.
+  // Empty in stub mode (FPL_MY_SQUAD_FILE set), where there's no live account to submit to.
   private final Optional<TransferExecutor> transferExecutor;
 
   private static Map<Position, List<Player>> groupAvailablePlayers(final List<Player> allPlayers) {
@@ -136,11 +136,12 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
 
     if (mySquad.getTransferContext() == null) {
       throw new IllegalStateException(
-          "This squad has no live FPL entry to submit a transfer to (FPL_AUTH_ENABLED must be true)");
+          "This squad has no live FPL entry to submit a transfer to (unset FPL_MY_SQUAD_FILE to use a live account)");
     }
 
     transferExecutor
-        .orElseThrow(() -> new IllegalStateException("Transfer execution isn't available - FPL_AUTH_ENABLED must be true"))
+        .orElseThrow(() -> new IllegalStateException(
+            "Transfer execution isn't available - unset FPL_MY_SQUAD_FILE to use a live account"))
         .execute(mySquad.getTransferContext(), suggestion);
   }
 }

@@ -15,17 +15,21 @@ version = '1.0-SNAPSHOT'
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 
 javafx {
-    version = '25'
+    version = '21.0.7'
     modules = ['javafx.controls']
 }
 
 repositories {
     mavenCentral()
+}
+
+tasks.named('bootRun') {
+    javaLauncher = javaToolchains.launcherFor(java.toolchain)
 }
 
 dependencies {
