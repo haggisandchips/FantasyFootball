@@ -12,6 +12,7 @@ import javafx.scene.shape.Line;
 import javafx.scene.shape.Rectangle;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
@@ -64,6 +65,67 @@ class PitchView extends Region {
   // clamped to PitchPlayer's own min/max.
   private static final double SHIRT_SIZE_FRACTION = PitchPlayer.MAX_SHIRT_SIZE / 900.0;
 
+  // The widest a starting-XI row ever gets (DEFENDER/MIDFIELDER's 5-a-side line) - unlike the
+  // substitutes row, placeRow gives these no side margin (see layoutChildren()'s placeRow calls), so
+  // this is the binding case for the horizontal half of the minimum size below.
+  private static final int MAX_ROW_PLAYERS =
+      Arrays.stream(Position.values()).mapToInt(Position::getNumber).max().orElseThrow();
+
+  // The smallest pitch height (paired, via ASPECT_RATIO, with the smallest width) below which cards
+  // start overlapping - horizontally, once a starting row's even spacing (rowWidth / (players + 1))
+  // falls below a card's own width; vertically, once rowGap (the even spacing layoutChildren()
+  // computes between the GOALKEEPER/DEFENDER/MIDFIELDER/FORWARD rows) falls below a card's actual
+  // rendered height (shirt + name + detail + fixture lines - taller than CARD_PADDING alone budgets
+  // for, see PitchPlayer). Either way, this is past the point where shirtSize's own clamp can shrink
+  // cards to compensate. Found by walking layoutChildren()'s real formulas (see
+  // minPitchHeightBelowWhichCardsOverlap()) rather than re-deriving a closed form by hand - with
+  // three separate clamps in play (shirtSize, detailFontSize, and the row-count-dependent geometry),
+  // that would be easy to get subtly wrong, and to leave stale the next time one of those formulas
+  // changes. (The 320x260 this used to be hardcoded to was well below both thresholds - it merely
+  // looked fine at whatever window size this was last tested at, until Killer Team's extra top/bottom
+  // chrome squeezed the pitch shorter than My Squad ever does and the rows visibly overlapped
+  // vertically.)
+  private static final double MIN_PITCH_HEIGHT = minPitchHeightBelowWhichCardsOverlap();
+
+  private static final double MIN_PITCH_WIDTH = MIN_PITCH_HEIGHT * ASPECT_RATIO;
+
+  // Walks candidate heights (in the height-constrained regime, i.e. width = height * ASPECT_RATIO -
+  // the same relationship layoutChildren() falls back to whenever the available width isn't itself
+  // the tighter constraint) until it finds the smallest one where neither overlap condition holds,
+  // reusing the exact same shirtSize/cardHeight/rowGap formulas layoutChildren() itself computes.
+  private static double minPitchHeightBelowWhichCardsOverlap() {
+
+    for (double height = 100; height <= 3000; height += 1) {
+      final double width = height * ASPECT_RATIO;
+
+      final double shirtSize = Math.clamp(width * SHIRT_SIZE_FRACTION, PitchPlayer.MIN_SHIRT_SIZE, PitchPlayer.MAX_SHIRT_SIZE);
+      final double cardWidth = shirtSize + PitchPlayer.CARD_PADDING;
+      final double cardHeight = shirtSize + PitchPlayer.CARD_PADDING;
+      final double fixtureLineHeight = PitchPlayer.detailFontSize(shirtSize) + PitchPlayer.LABEL_SPACING;
+      final double forwardBottomGap = PitchPlayer.detailFontSize(shirtSize) / 2.0 + 5;
+
+      final boolean rowsWouldOverlapHorizontally = width < cardWidth * (MAX_ROW_PLAYERS + 1);
+      if (rowsWouldOverlapHorizontally) {
+        continue;
+      }
+
+      final double goalkeeperY = height * GOALKEEPER_Y_FRACTION;
+      final double halfwayLineY = height * HALFWAY_LINE_Y_FRACTION;
+      final double forwardY = halfwayLineY - cardHeight - fixtureLineHeight - forwardBottomGap;
+      final double rowGap = (forwardY - goalkeeperY) / 3.0;
+
+      final boolean rowsWouldOverlapVertically = rowGap < cardHeight + fixtureLineHeight;
+      if (rowsWouldOverlapVertically) {
+        continue;
+      }
+
+      return height;
+    }
+
+    throw new IllegalStateException("No pitch height up to 3000px avoids card overlap - PitchPlayer's card "
+        + "geometry (shirt/font sizes, CARD_PADDING) likely changed in a way this no longer accounts for.");
+  }
+
   private final Squad squad;
 
   private final Line leftSideline = line();
@@ -99,7 +161,7 @@ class PitchView extends Region {
 
     this.squad = squad;
     getStyleClass().add("pitch");
-    setMinSize(320, 260);
+    setMinSize(MIN_PITCH_WIDTH, MIN_PITCH_HEIGHT);
 
     centerCircle.setType(ArcType.OPEN);
     centerCircle.getStyleClass().add("pitch-line");
