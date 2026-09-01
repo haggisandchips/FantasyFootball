@@ -268,11 +268,18 @@ class PitchView extends Region {
     // MIDFIELDER split the space between them into three equal gaps, so spacing stays even and
     // FORWARD can never overlap MIDFIELDER regardless of how tall the region actually is.
     final double goalkeeperY = offsetY + height * GOALKEEPER_Y_FRACTION;
-    // Leaves a little breathing room between the forward row and the halfway line, so the cost/
-    // points line underneath the shirt doesn't sit right on top of it - half that line's own
-    // height is enough.
-    final double forwardBottomGap = PitchPlayer.detailFontSize(shirtSize) / 2.0;
-    final double forwardY = halfwayLineY - cardHeight - forwardBottomGap;
+    // On the pitch, PitchPlayer renders a third line (next fixture) below the cost/points line -
+    // cardHeight (shared with cardWidth via CARD_PADDING) only budgets for shirt + name + one detail
+    // line, so reserve one more line's worth of height (its font size plus the card's own
+    // inter-label spacing) on top of that, or the fixture line would sit under/into the halfway line
+    // for the forward row specifically (the one row anchored to it).
+    final double fixtureLineHeight = PitchPlayer.detailFontSize(shirtSize) + PitchPlayer.LABEL_SPACING;
+    // Leaves a little breathing room between the forward row and the halfway line, so the fixture
+    // line underneath the shirt doesn't sit right on top of it - half that line's own height, plus a
+    // few extra fixed pixels (visually confirmed - the proportional gap alone still read as too
+    // tight), is enough.
+    final double forwardBottomGap = PitchPlayer.detailFontSize(shirtSize) / 2.0 + 5;
+    final double forwardY = halfwayLineY - cardHeight - fixtureLineHeight - forwardBottomGap;
     final double rowGap = (forwardY - goalkeeperY) / 3.0;
 
     final double[] rowY = { goalkeeperY, goalkeeperY + rowGap, goalkeeperY + 2 * rowGap, forwardY };

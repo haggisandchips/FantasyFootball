@@ -135,6 +135,12 @@
   -fx-font-size: 9px;
   -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.85), 3, 0.6, 0, 1);
 }
+.player-fixture {
+  -fx-text-fill: rgba(255,255,255,0.92);
+  -fx-font-size: 9px;
+  -fx-font-weight: bold;
+  -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.85), 3, 0.6, 0, 1);
+}
 .captain-badge {
   -fx-background-color: -accent;
   -fx-text-fill: -bg-dark;

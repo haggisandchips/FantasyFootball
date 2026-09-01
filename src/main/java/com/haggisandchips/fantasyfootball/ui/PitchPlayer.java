@@ -1,5 +1,6 @@
 package com.haggisandchips.fantasyfootball.ui;
 
+import com.haggisandchips.fantasyfootball.domain.Fixture;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.Position;
 import javafx.geometry.Pos;
@@ -10,9 +11,10 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
 // A player rendered as their real club shirt (fetched from FPL's own CDN, keyed by team_code -
-// see Player.teamCode), their name, and a secondary cost/points line - used both positioned on the
-// pitch (where setShirtSize() lets PitchView shrink/grow it as the window resizes) and in ordinary
-// flow layouts (transfer suggestions, the killer team list, etc, always at MAX_SHIRT_SIZE).
+// see Player.teamCode), their name, a secondary cost/points line, and a third line for their next
+// fixture - used both positioned on the pitch (where setShirtSize() lets PitchView shrink/grow it
+// as the window resizes) and in ordinary flow layouts (TransfersTab's suggestion pairs and injured
+// list, always at MAX_SHIRT_SIZE). The killer team list renders its own cards, not PitchPlayer.
 final class PitchPlayer extends VBox {
 
   static final double MAX_SHIRT_SIZE = 100;
@@ -24,11 +26,19 @@ final class PitchPlayer extends VBox {
 
   static final double DEFAULT_CARD_WIDTH = MAX_SHIRT_SIZE + CARD_PADDING;
 
+  // Gap between the shirt, name, detail and (where shown) fixture labels - exposed so PitchView can
+  // budget the same amount of extra height it reserves for the fixture line's own font size.
+  static final double LABEL_SPACING = 2;
+
   private final ImageView shirt;
 
   private final Label nameLabel;
 
   private final Label detailLabel;
+
+  private final Label fixtureLabel;
+
+  private final Fixture nextFixture;
 
   static PitchPlayer of(final Player player) {
 
@@ -78,11 +88,41 @@ final class PitchPlayer extends VBox {
     detailLabel = new Label(detailText);
     detailLabel.getStyleClass().add("player-detail");
 
-    setSpacing(2);
+    nextFixture = player.getNextFixture();
+    fixtureLabel = new Label(fixtureText(nextFixture));
+    fixtureLabel.getStyleClass().add("player-fixture");
+
+    setSpacing(LABEL_SPACING);
     setAlignment(Pos.CENTER);
-    getChildren().addAll(shirtPane, nameLabel, detailLabel);
+    getChildren().addAll(shirtPane, nameLabel, detailLabel, fixtureLabel);
 
     setShirtSize(MAX_SHIRT_SIZE);
+  }
+
+  // "Opponent (H/A) · FDR n" - or a placeholder for a team with no fixture in the current window (a
+  // blank gameweek), which FplPlayerDataClient.attachNextFixtures leaves as null rather than omitting.
+  private static String fixtureText(final Fixture fixture) {
+
+    return fixture == null
+        ? "No fixture"
+        : String.format("%s (%s) · FDR %d", fixture.getOpponent(), fixture.isHome() ? "H" : "A", fixture.getDifficulty());
+  }
+
+  // FPL's own 1 (easiest, green) - 5 (hardest, red) fixture difficulty colour scale.
+  private static String difficultyColor(final int difficulty) {
+
+    switch (difficulty) {
+      case 1:
+        return "#2ecc71";
+      case 2:
+        return "#8fce00";
+      case 3:
+        return "#f1c40f";
+      case 4:
+        return "#e67e22";
+      default:
+        return "#e74c3c";
+    }
   }
 
   // Rescales the shirt image and card width (and, modestly, the text) to the given shirt size -
@@ -100,6 +140,12 @@ final class PitchPlayer extends VBox {
 
     nameLabel.setStyle(String.format("-fx-font-size: %.0fpx;", Math.clamp(size * 0.13, 9, 13)));
     detailLabel.setStyle(String.format("-fx-font-size: %.0fpx;", detailFontSize(size)));
+
+    final String fixtureFontSize = String.format("-fx-font-size: %.0fpx;", detailFontSize(size));
+    final String fixtureFill = nextFixture == null
+        ? ""
+        : String.format(" -fx-text-fill: %s;", difficultyColor(nextFixture.getDifficulty()));
+    fixtureLabel.setStyle(fixtureFontSize + fixtureFill);
   }
 
   // The cost/points line's font size at a given shirt size - exposed so PitchView can reserve

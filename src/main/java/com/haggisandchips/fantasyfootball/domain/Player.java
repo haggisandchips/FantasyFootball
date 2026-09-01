@@ -59,6 +59,10 @@ public class Player {
   @JsonProperty("chance_of_playing_next_round")
   private Integer chanceOfPlayingNextRound;
 
+  // Not part of bootstrap-static - populated afterwards from a separate fixtures fetch (see
+  // fpl.FplPlayerDataClient). Null if the team has no scheduled fixture (a blank gameweek).
+  private Fixture nextFixture;
+
   @JsonProperty("now_cost")
   public void setCostNow(int costNow) {
 
