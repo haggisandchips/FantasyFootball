@@ -5,11 +5,11 @@ import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.Position;
 
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 // Suggests who out of a 15-man squad should start (any legal FPL formation), and who should
@@ -41,18 +41,6 @@ public final class OptimalElevenSelector {
   // gameweek) always loses a fixture-difficulty tiebreak against one that actually has a game.
   private static final int NO_FIXTURE_DIFFICULTY = 6;
 
-  // Effective points (this gameweek's fixture(s) applied, weighted by difficulty - see
-  // effectivePoints()) desc, then fixture difficulty asc (easier wins - a tiebreak within
-  // effectivePoints ties, e.g. two different fixture combinations that happen to weight the same),
-  // then home over away, then form desc, then points-per-game desc - a genuine tie after all of that
-  // is settled by coin toss (see shuffleTiedGroups), not by this comparator.
-  private static final Comparator<Player> RANKING = Comparator
-      .comparingDouble(OptimalElevenSelector::effectivePoints).reversed()
-      .thenComparingInt(OptimalElevenSelector::fixtureDifficultyRank)
-      .thenComparingInt(OptimalElevenSelector::homeRank)
-      .thenComparing(Player::getForm, Comparator.reverseOrder())
-      .thenComparing(Player::getPointsPerGame, Comparator.reverseOrder());
-
   private OptimalElevenSelector() {
   }
 
@@ -63,15 +51,37 @@ public final class OptimalElevenSelector {
   private record Formation(int defenders, int midfielders, int forwards) {
   }
 
-  public static Result select(final List<Player> squad) {
+  // squad's currently-starting players (identified by fantasyId) are given the final say on a
+  // genuine tie, so a suggested swap only ever fires when the incoming player is a strictly BETTER
+  // choice - not when they're merely equal, which used to be settled by coin toss and could
+  // therefore suggest swapping a pair back and forth, unprompted by any change in form, on
+  // consecutive runs (or even immediately after applying the very swap it had just suggested).
+  // Player ID is the final, purely-for-determinism tiebreak below that - it never actually decides
+  // a real suggestion, only stops two bench players tied on everything (including not currently
+  // starting) from having arbitrary display order.
+  private static Comparator<Player> ranking(final Set<Integer> currentlyStartingIds) {
 
-    final Random random = new Random();
+    return Comparator
+        .comparingDouble(OptimalElevenSelector::effectivePoints).reversed()
+        .thenComparingInt(OptimalElevenSelector::fixtureDifficultyRank)
+        .thenComparingInt(OptimalElevenSelector::homeRank)
+        .thenComparing(Player::getForm, Comparator.reverseOrder())
+        .thenComparing(Player::getPointsPerGame, Comparator.reverseOrder())
+        .thenComparingInt(player -> currentlyStartingIds.contains(player.getFantasyId()) ? 0 : 1)
+        .thenComparingInt(Player::getFantasyId);
+  }
+
+  public static Result select(final List<Player> squad, final Collection<Player> currentlyStarting) {
+
+    final Set<Integer> currentlyStartingIds =
+        currentlyStarting.stream().map(Player::getFantasyId).collect(Collectors.toSet());
+    final Comparator<Player> ranking = ranking(currentlyStartingIds);
     final Map<Position, List<Player>> byPosition = squad.stream().collect(Collectors.groupingBy(Player::getPosition));
 
-    final List<Player> goalkeepers = ranked(byPosition.getOrDefault(Position.GOALKEEPER, List.of()), random);
-    final List<Player> defenders = ranked(byPosition.getOrDefault(Position.DEFENDER, List.of()), random);
-    final List<Player> midfielders = ranked(byPosition.getOrDefault(Position.MIDFIELDER, List.of()), random);
-    final List<Player> forwards = ranked(byPosition.getOrDefault(Position.FORWARD, List.of()), random);
+    final List<Player> goalkeepers = ranked(byPosition.getOrDefault(Position.GOALKEEPER, List.of()), ranking);
+    final List<Player> defenders = ranked(byPosition.getOrDefault(Position.DEFENDER, List.of()), ranking);
+    final List<Player> midfielders = ranked(byPosition.getOrDefault(Position.MIDFIELDER, List.of()), ranking);
+    final List<Player> forwards = ranked(byPosition.getOrDefault(Position.FORWARD, List.of()), ranking);
 
     final Formation formation = bestFormation(defenders, midfielders, forwards);
 
@@ -94,7 +104,7 @@ public final class OptimalElevenSelector {
 
     // The captain must actually be playing, so elect from the starting XI itself (any position),
     // using the same ranking - #1 captains, #2 vice-captains.
-    final List<Player> captaincyOrder = ranked(startingEleven, random);
+    final List<Player> captaincyOrder = ranked(startingEleven, ranking);
     final Player captain = captaincyOrder.isEmpty() ? null : captaincyOrder.get(0);
     final Player viceCaptain = captaincyOrder.size() < 2 ? null : captaincyOrder.get(1);
 
@@ -104,8 +114,8 @@ public final class OptimalElevenSelector {
   // Tries every formation FPL allows (1 GK, 3-5 DEF, 2-5 MID, 1-3 FWD, 11 total) and keeps whichever
   // fields the highest total points - a tie (identical total across formations) keeps whichever was
   // found first, which only happens when every player-level tiebreak above was already exhausted
-  // too (equal points sums can't otherwise arise once genuine ties are coin-tossed within a
-  // position), so no further tiebreak is needed here.
+  // too (equal points sums can't otherwise arise once genuine ties are fully resolved within a
+  // position by ranking()), so no further tiebreak is needed here.
   private static Formation bestFormation(
       final List<Player> defenders, final List<Player> midfielders, final List<Player> forwards) {
 
@@ -140,40 +150,12 @@ public final class OptimalElevenSelector {
     return best;
   }
 
-  private static List<Player> ranked(final List<Player> players, final Random random) {
+  private static List<Player> ranked(final List<Player> players, final Comparator<Player> ranking) {
 
     final List<Player> result = new ArrayList<>(players);
-    result.sort(RANKING);
-    shuffleTiedGroups(result, random);
+    result.sort(ranking);
 
     return result;
-  }
-
-  // Within a run of players tied on every criterion above, order is otherwise arbitrary (an
-  // artifact of however they arrived in the list) - shuffling makes that a genuine coin toss
-  // instead of silently favouring whichever came first.
-  private static void shuffleTiedGroups(final List<Player> ranked, final Random random) {
-
-    int start = 0;
-    while (start < ranked.size()) {
-      int end = start + 1;
-      while (end < ranked.size() && isTied(ranked.get(start), ranked.get(end))) {
-        end++;
-      }
-      if (end - start > 1) {
-        Collections.shuffle(ranked.subList(start, end), random);
-      }
-      start = end;
-    }
-  }
-
-  private static boolean isTied(final Player first, final Player second) {
-
-    return effectivePoints(first) == effectivePoints(second)
-        && fixtureDifficultyRank(first) == fixtureDifficultyRank(second)
-        && homeRank(first) == homeRank(second)
-        && first.getForm().compareTo(second.getForm()) == 0
-        && first.getPointsPerGame().compareTo(second.getPointsPerGame()) == 0;
   }
 
   // Season-to-date points scaled by this player's fixture-difficulty multiplier for the gameweek
@@ -188,7 +170,7 @@ public final class OptimalElevenSelector {
   }
 
   // A double gameweek's fixtures are ranked by their first (earliest-kickoff) one - the tiebreak
-  // below this in RANKING (form, then points-per-game) is what actually separates two players who
+  // below this in ranking() (form, then points-per-game) is what actually separates two players who
   // both have one, so this doesn't need to average or otherwise combine several fixtures' ratings.
   private static int fixtureDifficultyRank(final Player player) {
 

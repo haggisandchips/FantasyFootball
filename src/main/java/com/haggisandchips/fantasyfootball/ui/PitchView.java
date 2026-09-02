@@ -66,10 +66,8 @@ class PitchView extends Region {
 
   private final Squad squad;
 
-  // Computed once by the caller (MySquadTab) and shared with its "Make Substitutions" button -
-  // OptimalElevenSelector.select() breaks ties with its own internal Random, so recomputing it a
-  // second time here could show arrows/badges for a different tied lineup than the one the button
-  // would actually submit.
+  // Computed once by the caller (MySquadTab) and shared with its "Make Substitutions" button, so
+  // both always agree on the same suggested lineup.
   private final OptimalElevenSelector.Result optimal;
 
   private final Line leftSideline = line();

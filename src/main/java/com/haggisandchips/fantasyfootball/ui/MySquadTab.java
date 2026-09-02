@@ -45,12 +45,13 @@ class MySquadTab extends BorderPane {
       final boolean includeTeamStrategyStats) {
 
     // Computed once and shared with PitchView (whose arrows/badges already show this same
-    // suggestion) and the button below, rather than each computing its own -
-    // OptimalElevenSelector.select() breaks ties with its own internal Random, so two separate
-    // calls could disagree with each other over which tied player to suggest.
+    // suggestion) and the button below, rather than each computing its own. The current starting
+    // XI is passed in too so a genuine tie favours whoever's already selected - a swap is only ever
+    // suggested when the incoming player is a strictly better choice.
     final List<Player> fullSquad = new ArrayList<>(squad.getStartingEleven());
     fullSquad.addAll(squad.getSubstitutes());
-    final OptimalElevenSelector.Result optimal = OptimalElevenSelector.select(fullSquad);
+    final OptimalElevenSelector.Result optimal =
+        OptimalElevenSelector.select(fullSquad, squad.getStartingEleven());
 
     setTop(header(squad, includeTeamStrategyStats));
     setCenter(new PitchView(squad, optimal));
