@@ -16,6 +16,11 @@ public class Squad {
 
   private final int freeTransfers;
 
+  // True when FPL reports transfers as "unlimited" this gameweek (wildcard/free hit active, or
+  // the pre-deadline-1 grace period) - freeTransfers is then just the suggestion-search budget
+  // (see Controls.UNLIMITED_TRANSFER_SUGGESTION_BUDGET), not a real FPL-imposed limit.
+  private final boolean unlimitedTransfers;
+
   private final Team team;
 
   // Display-only pick-team data - the transfer/killer-team algorithms only ever use getTeam().

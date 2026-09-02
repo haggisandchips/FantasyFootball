@@ -54,10 +54,12 @@ class MySquadTab extends BorderPane {
 
     final String overallPoints =
         squad.getOverallPoints() == null ? "N/A" : String.valueOf(squad.getOverallPoints());
+    final String freeTransfers =
+        squad.isUnlimitedTransfers() ? "∞" : String.valueOf(squad.getFreeTransfers());
 
     final HBox header = new HBox(32,
         statBox("Squad Value", String.format("£%.1fm", squad.getSquadValue())),
-        statBox("Free Transfers", String.valueOf(squad.getFreeTransfers())),
+        statBox("Free Transfers", freeTransfers),
         statBox("Overall Points", overallPoints));
     header.setAlignment(Pos.CENTER);
     header.setPadding(new Insets(16));

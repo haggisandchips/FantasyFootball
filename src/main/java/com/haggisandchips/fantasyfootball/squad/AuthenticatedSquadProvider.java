@@ -100,9 +100,10 @@ public class AuthenticatedSquadProvider implements SquadProvider {
 
     final Transfers transfers = myTeam.getTransfers();
     final int freeTransfers = resolveFreeTransfers(transfers);
+    final boolean unlimitedTransfers = "unlimited".equals(transfers.getStatus());
 
     return new Squad(
-        toPounds(transfers.getValue()), toPounds(transfers.getBank()), freeTransfers, team,
+        toPounds(transfers.getValue()), toPounds(transfers.getBank()), freeTransfers, unlimitedTransfers, team,
         startingEleven, substitutes, captain, viceCaptain, entry.getSummaryOverallPoints(), entry.getName(),
         new TransferContext(entryId, playerDataClient.getCurrentTransferEvent()));
   }

@@ -34,7 +34,7 @@ public class ConsoleAnalysisReporter implements AnalysisReporter {
 
     log.info("Squad Value: {}", mySquad.getSquadValue());
     log.info("Money Available: {}", mySquad.getMoneyAvailable());
-    log.info("Free Transfers: {}", mySquad.getFreeTransfers());
+    log.info("Free Transfers: {}", mySquad.isUnlimitedTransfers() ? "∞" : mySquad.getFreeTransfers());
     log.info("Overall Points: {}", mySquad.getOverallPoints());
     log.info("My Squad: {}", mySquad.getTeam());
   }

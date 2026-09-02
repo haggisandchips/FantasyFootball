@@ -565,7 +565,7 @@ class KillerTeamTab extends BorderPane {
     final StartingElevenSelector.Result picked = StartingElevenSelector.select(team.getPlayers());
 
     final Squad squad = new Squad(
-        team.getCostNow(), maxBudget.subtract(team.getCostNow()), 0, team,
+        team.getCostNow(), maxBudget.subtract(team.getCostNow()), 0, false, team,
         picked.startingEleven(), picked.substitutes(), null, null, team.getPoints(), null, null);
 
     // teamAnalysisService/onTransferExecuted are never touched here - this squad's own
