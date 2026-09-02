@@ -43,3 +43,101 @@ dependencies {
     compileOnly 'org.projectlombok:lombok:1.18.46'
     annotationProcessor 'org.projectlombok:lombok:1.18.46'
 }
+
+// Stages just the boot jar (nothing else from build/libs) as jpackage's --input, so the packaged
+// app image doesn't pick up the plain (non-executable) jar that bootJar's sibling 'jar' task produces.
+tasks.register('jpackageInput', Sync) {
+    dependsOn tasks.named('bootJar')
+    from tasks.named('bootJar')
+    into layout.buildDirectory.dir('jpackage-input')
+}
+
+// Builds the AppIcon.iconset -> .icns that jpackage needs on macOS, from the PNGs already
+// checked in for the JavaFX window icon (there's no source .icns in the repo). iconutil only
+// accepts files matching its fixed iconset naming scheme, so the existing icon_NxN.png files are
+// copied under those names; 32/256 double up as the @2x (retina) variants of 16/128 since there's
+// no 512x512 source to give it a true @2x for 256. macOS-only - iconutil doesn't exist elsewhere.
+def buildMacIcns = {
+    def iconsDir = file('src/main/resources/icons')
+    def iconsetDir = new File(layout.buildDirectory.get().asFile, 'jpackage-icon/AppIcon.iconset')
+    delete(iconsetDir)
+    iconsetDir.mkdirs()
+
+    [
+        'icon_16x16.png' : ['icon_16x16.png'],
+        'icon_32x32.png' : ['icon_16x16@2x.png', 'icon_32x32.png'],
+        'icon_128x128.png': ['icon_128x128.png'],
+        'icon_256x256.png': ['icon_128x128@2x.png', 'icon_256x256.png'],
+    ].each { source, targets ->
+        targets.each { target ->
+            java.nio.file.Files.copy(new File(iconsDir, source).toPath(), new File(iconsetDir, target).toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        }
+    }
+
+    def icnsFile = new File(layout.buildDirectory.get().asFile, 'jpackage-icon/AppIcon.icns')
+    exec {
+        commandLine 'iconutil', '-c', 'icns', '-o', icnsFile.path, iconsetDir.path
+    }
+    icnsFile
+}
+
+tasks.register('jpackageInstaller', Exec) {
+    group = 'distribution'
+    description = 'Builds a native installer for the desktop app via jpackage - msi on Windows, dmg on macOS, deb on Linux, matching whichever OS this is run on'
+    dependsOn tasks.named('jpackageInput')
+
+    def destDir = layout.buildDirectory.dir('jpackage')
+    def os = org.gradle.internal.os.OperatingSystem.current()
+    outputs.dir(destDir)
+
+    doFirst {
+        delete(destDir)
+
+        def javaHome = javaToolchains.launcherFor(java.toolchain).get().metadata.installationPath.asFile
+        def jpackageBinary = new File(javaHome, "bin/jpackage${os.isWindows() ? '.exe' : ''}")
+        def bootJarFile = tasks.named('bootJar').get().archiveFile.get().asFile
+        def appVersion = project.hasProperty('appVersion') ? project.appVersion.toString() : '0.0.0'
+
+        def platformArgs
+        if (os.isWindows()) {
+            platformArgs = [
+                '--type', 'msi',
+                '--icon', file('src/main/resources/icons/newcastle_football_app.ico').path,
+                '--win-menu',
+                '--win-menu-group', 'Fantasy Football',
+                '--win-shortcut',
+                '--win-dir-chooser',
+                '--win-per-user-install',
+            ]
+        } else if (os.isMacOsX()) {
+            platformArgs = [
+                '--type', 'dmg',
+                '--icon', buildMacIcns().path,
+                '--mac-package-identifier', 'com.haggisandchips.fantasyfootball',
+            ]
+        } else {
+            platformArgs = [
+                '--type', 'deb',
+                '--icon', file('src/main/resources/icons/icon_256x256.png').path,
+                '--linux-shortcut',
+                '--linux-menu-group', 'Utility',
+                '--linux-package-name', 'fantasy-football',
+            ]
+        }
+
+        executable(jpackageBinary)
+        args(
+            [
+                '--input', tasks.named('jpackageInput').get().destinationDir.path,
+                '--dest', destDir.get().asFile.path,
+                '--main-jar', bootJarFile.name,
+                '--main-class', 'org.springframework.boot.loader.launch.JarLauncher',
+                '--name', 'Fantasy Football',
+                '--vendor', 'Haggis and Chips',
+                '--description', 'Fantasy Premier League squad and transfer analysis tool',
+                '--app-version', appVersion,
+            ] + platformArgs
+        )
+    }
+}

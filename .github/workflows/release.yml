@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (no leading v), e.g. 0.0.0-test'
+        required: true
+        default: '0.0.0-test'
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag_name: ${{ steps.version.outputs.tag_name }}
+      draft: ${{ steps.version.outputs.draft }}
+    steps:
+      # Manual (workflow_dispatch) runs use the version typed into the Actions UI and publish a
+      # draft/prerelease under a 'manual-' tag, so a test run never collides with or gets mistaken
+      # for a real tagged release; a real 'v*.*.*' tag push publishes normally under that tag.
+      - name: Derive version and release metadata
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "version=$DISPATCH_VERSION" >> "$GITHUB_OUTPUT"
+            echo "tag_name=manual-$DISPATCH_VERSION" >> "$GITHUB_OUTPUT"
+            echo "draft=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "tag_name=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "draft=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-windows:
+    needs: version
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Add WiX Toolset to PATH
+        # windows-latest ships WiX 3.11 but doesn't put it on PATH; jpackage's msi packager
+        # shells out to candle.exe/light.exe and needs it there.
+        run: echo "C:/Program Files (x86)/WiX Toolset v3.11/bin" >> "$GITHUB_PATH"
+
+      - name: Build MSI installer
+        run: ./gradlew jpackageInstaller "-PappVersion=${{ needs.version.outputs.version }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-windows
+          path: build/jpackage/*.msi
+          if-no-files-found: error
+
+  build-macos:
+    needs: version
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build DMG installer
+        run: ./gradlew jpackageInstaller "-PappVersion=${{ needs.version.outputs.version }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-macos
+          path: build/jpackage/*.dmg
+          if-no-files-found: error
+
+  build-linux:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install deb packaging tools
+        # dpkg-deb is already present on ubuntu-latest; fakeroot and binutils are jpackage's other
+        # two Linux-side dependencies for building a .deb and aren't guaranteed to be preinstalled.
+        run: sudo apt-get update && sudo apt-get install -y fakeroot binutils
+
+      - name: Build DEB installer
+        run: ./gradlew jpackageInstaller "-PappVersion=${{ needs.version.outputs.version }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-linux
+          path: build/jpackage/*.deb
+          if-no-files-found: error
+
+  release:
+    needs: [version, build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: installers
+          merge-multiple: true
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.tag_name }}
+          name: ${{ needs.version.outputs.tag_name }}
+          draft: ${{ needs.version.outputs.draft }}
+          prerelease: ${{ needs.version.outputs.draft }}
+          files: installers/*
+          generate_release_notes: true
