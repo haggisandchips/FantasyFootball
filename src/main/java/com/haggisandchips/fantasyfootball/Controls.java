@@ -1,16 +1,6 @@
 package com.haggisandchips.fantasyfootball;
 
-import java.util.Map;
-
 public final class Controls {
-
-  private static final Map<String, Integer> DOUBLE_FIXTURE_TEAMS = Map.of(
-    /*  "5", 2,
-      "7", 2,
-      "13", 2,
-      "14", 2,
-      "15", 2,
-      "18", 2*/);
 
   public static final int MAX_COMBINATIONS_PER_BUCKET = 5;
 
@@ -76,10 +66,5 @@ public final class Controls {
   public static final int MAX_KILLER_TEAM_PROGRESS_LOG_STEP = 1_000_000;
 
   private Controls() {
-  }
-
-  public static int getFixtureMultiplier(String team) {
-
-    return DOUBLE_FIXTURE_TEAMS.getOrDefault(team, 1);
   }
 }

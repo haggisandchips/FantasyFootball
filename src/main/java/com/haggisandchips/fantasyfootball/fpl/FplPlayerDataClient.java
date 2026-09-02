@@ -10,10 +10,13 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Component
@@ -22,8 +25,8 @@ public class FplPlayerDataClient implements PlayerDataClient {
 
   private static final URI BOOTSTRAP_STATIC = URI.create("https://fantasy.premierleague.com/api/bootstrap-static/");
 
-  // future=1 restricts this to fixtures that haven't been played yet, so the earliest one left per
-  // team (see attachNextFixtures) is always that team's next fixture.
+  // future=1 restricts this to fixtures that haven't been played yet, so the lowest-numbered
+  // gameweek left for a given team (see attachNextFixtures) is always that team's next one.
   private static final URI FIXTURES = URI.create("https://fantasy.premierleague.com/api/fixtures/?future=1");
 
   private final HttpGateway httpGateway;
@@ -56,7 +59,7 @@ public class FplPlayerDataClient implements PlayerDataClient {
     return objectMapper.readValue(body, Statistics.class);
   }
 
-  // Mutates each player in place, setting nextFixture from a separate fixtures fetch - allPlayers
+  // Mutates each player in place, setting nextFixtures from a separate fixtures fetch - allPlayers
   // is looked up by id everywhere else in the app (see squad.AuthenticatedSquadProvider), so
   // enriching these instances here is enough for the squad/transfer/killer-team screens to see it
   // too, without threading fixture data through every one of those call sites.
@@ -69,22 +72,53 @@ public class FplPlayerDataClient implements PlayerDataClient {
     final String body = httpGateway.get(FIXTURES);
     final List<FixtureEntry> fixtures = objectMapper.readValue(body, new TypeReference<List<FixtureEntry>>() { });
 
-    // First (chronologically) unfinished fixture per team wins - putIfAbsent on a stream sorted by
-    // kickoff time keeps that first one and ignores any later fixture for a team that already has a
-    // next-fixture entry. A team with no fixture in this window (a blank gameweek) simply has no
-    // entry, which callers must treat as "no fixture" rather than a lookup failure.
-    final Map<Integer, Fixture> nextFixtureByTeamId = new HashMap<>();
-    fixtures.stream()
-        .sorted(Comparator.comparing(FixtureEntry::getKickoffTime, Comparator.nullsLast(Comparator.naturalOrder())))
-        .forEach(fixture -> {
-          nextFixtureByTeamId.putIfAbsent(fixture.getTeamHome(),
-              new Fixture(shortNamesByTeamId.get(fixture.getTeamAway()), true, fixture.getTeamHomeDifficulty()));
-          nextFixtureByTeamId.putIfAbsent(fixture.getTeamAway(),
-              new Fixture(shortNamesByTeamId.get(fixture.getTeamHome()), false, fixture.getTeamAwayDifficulty()));
-        });
+    // Every still-to-play fixture each team appears in, home or away - grouped so
+    // nextGameweekFixtures can work out, per team, which gameweek is next for that specific team
+    // (not just fixture 1 with the earliest kickoff, which would silently drop a second fixture in
+    // the same, "double", gameweek) and collect every fixture that falls in it.
+    final Map<Integer, List<FixtureEntry>> fixturesByTeamId = new HashMap<>();
+    for (final FixtureEntry fixture : fixtures) {
+      fixturesByTeamId.computeIfAbsent(fixture.getTeamHome(), teamId -> new ArrayList<>()).add(fixture);
+      fixturesByTeamId.computeIfAbsent(fixture.getTeamAway(), teamId -> new ArrayList<>()).add(fixture);
+    }
 
     for (final Player player : players) {
-      player.setNextFixture(nextFixtureByTeamId.get(Integer.valueOf(player.getTeam())));
+      final int teamId = Integer.parseInt(player.getTeam());
+      final List<FixtureEntry> teamFixtures = fixturesByTeamId.getOrDefault(teamId, List.of());
+      player.setNextFixtures(nextGameweekFixtures(teamId, teamFixtures, shortNamesByTeamId));
     }
+  }
+
+  // This team's own next gameweek is whichever of its remaining fixtures' event numbers is lowest -
+  // a team sitting out a blank gameweek simply has no fixture carrying that number, so its next real
+  // one (however far off) wins instead. Every fixture sharing that same number is then this team's
+  // full set for it (more than one only for a double gameweek), sorted by kickoff purely for a
+  // stable, predictable display order.
+  private static List<Fixture> nextGameweekFixtures(
+      final int teamId, final List<FixtureEntry> teamFixtures, final Map<Integer, String> shortNamesByTeamId) {
+
+    final Optional<Integer> nextGameweek = teamFixtures.stream()
+        .map(FixtureEntry::getEvent)
+        .filter(Objects::nonNull)
+        .min(Comparator.naturalOrder());
+
+    if (nextGameweek.isEmpty()) {
+      return List.of();
+    }
+
+    return teamFixtures.stream()
+        .filter(fixture -> nextGameweek.get().equals(fixture.getEvent()))
+        .sorted(Comparator.comparing(FixtureEntry::getKickoffTime, Comparator.nullsLast(Comparator.naturalOrder())))
+        .map(fixture -> toFixture(fixture, teamId, shortNamesByTeamId))
+        .toList();
+  }
+
+  private static Fixture toFixture(
+      final FixtureEntry fixture, final int teamId, final Map<Integer, String> shortNamesByTeamId) {
+
+    final boolean home = fixture.getTeamHome() == teamId;
+    final int opponentId = home ? fixture.getTeamAway() : fixture.getTeamHome();
+    final int difficulty = home ? fixture.getTeamHomeDifficulty() : fixture.getTeamAwayDifficulty();
+    return new Fixture(shortNamesByTeamId.get(opponentId), home, difficulty);
   }
 }

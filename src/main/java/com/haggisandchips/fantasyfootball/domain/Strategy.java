@@ -1,6 +1,5 @@
 package com.haggisandchips.fantasyfootball.domain;
 
-import com.haggisandchips.fantasyfootball.Controls;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
@@ -16,17 +15,17 @@ public enum Strategy {
       Comparator.comparing(Team::getPoints),
       player -> (double) player.getPoints(),
       playerLine -> BigDecimal.valueOf(playerLine.getPoints()),
-      player -> BigDecimal.valueOf(player.getPoints() * Controls.getFixtureMultiplier(player.getTeam()))),
+      player -> BigDecimal.valueOf(player.getPoints() * player.getNextFixtures().size())),
   FORM(
       Comparator.comparing(Team::getForm).thenComparing(Team::getPoints),
       player -> player.getForm().doubleValue(),
       PlayerLine::getForm,
-      player -> player.getForm().multiply(BigDecimal.valueOf(Controls.getFixtureMultiplier(player.getTeam())))),
+      player -> player.getForm().multiply(BigDecimal.valueOf(player.getNextFixtures().size()))),
   POINTS_PER_GAME(
       Comparator.comparing(Team::getPointsPerGame).thenComparing(Team::getPoints),
       player -> player.getPointsPerGame().doubleValue(),
       PlayerLine::getPointsPerGame,
-      player -> player.getPointsPerGame().multiply(BigDecimal.valueOf(Controls.getFixtureMultiplier(player.getTeam()))));
+      player -> player.getPointsPerGame().multiply(BigDecimal.valueOf(player.getNextFixtures().size())));
 
   private final Comparator<Team> comparator;
 

@@ -1,6 +1,5 @@
 package com.haggisandchips.fantasyfootball.domain;
 
-import com.haggisandchips.fantasyfootball.Controls;
 import lombok.Getter;
 
 import java.math.BigDecimal;
@@ -24,7 +23,7 @@ public class PlayerLine implements Comparable<PlayerLine> {
     int points = 0;
     for (final Player player : players) {
 
-      int fixtureMultiplier = Controls.getFixtureMultiplier(player.getTeam());
+      final int fixtureMultiplier = player.getNextFixtures().size();
 
       costNow = costNow.add(player.getCostNow());
       points += player.getPoints() * fixtureMultiplier;

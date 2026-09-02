@@ -24,6 +24,10 @@ class FixtureEntry {
   // nothing about that query param is enforced server-side.
   private boolean finished;
 
+  // The gameweek this fixture falls in - null for one not yet scheduled into one (postponed/TBC),
+  // which attachNextFixtures then simply ignores when working out each team's next gameweek.
+  private Integer event;
+
   // Left as a raw ISO-8601 string (rather than parsed to an Instant) - lexicographic order matches
   // chronological order for that format, which is all the sort in FplPlayerDataClient needs. Null
   // for a fixture that hasn't been scheduled yet (postponed/TBC).

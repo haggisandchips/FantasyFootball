@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static java.math.RoundingMode.UNNECESSARY;
 
@@ -60,8 +61,12 @@ public class Player {
   private Integer chanceOfPlayingNextRound;
 
   // Not part of bootstrap-static - populated afterwards from a separate fixtures fetch (see
-  // fpl.FplPlayerDataClient). Null if the team has no scheduled fixture (a blank gameweek).
-  private Fixture nextFixture;
+  // fpl.FplPlayerDataClient). Every fixture this player's team has in their next upcoming
+  // gameweek - almost always one, but more than one for a "double gameweek" and none for a
+  // "blank gameweek" (never null either way, just possibly empty). Also what team selection
+  // weights the points/form/points-per-game stats by - see Strategy, PlayerLine, and
+  // StartingElevenSelector.effectivePoints, all of which multiply by this list's size.
+  private List<Fixture> nextFixtures = List.of();
 
   @JsonProperty("now_cost")
   public void setCostNow(int costNow) {

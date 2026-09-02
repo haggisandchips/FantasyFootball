@@ -1,6 +1,5 @@
 package com.haggisandchips.fantasyfootball.calculation;
 
-import com.haggisandchips.fantasyfootball.Controls;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.Position;
 
@@ -136,7 +135,7 @@ public final class StartingElevenSelector {
   // 15-man squad itself was ranked when picked.
   private static int effectivePoints(final Player player) {
 
-    return player.getPoints() * Controls.getFixtureMultiplier(player.getTeam());
+    return player.getPoints() * player.getNextFixtures().size();
   }
 
   private static List<Player> rankedByPoints(final List<Player> players, final Random random) {

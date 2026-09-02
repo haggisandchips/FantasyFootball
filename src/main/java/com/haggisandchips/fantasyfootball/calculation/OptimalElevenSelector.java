@@ -41,11 +41,12 @@ public final class OptimalElevenSelector {
   // gameweek) always loses a fixture-difficulty tiebreak against one that actually has a game.
   private static final int NO_FIXTURE_DIFFICULTY = 6;
 
-  // Points desc, then fixture difficulty asc (easier wins), then home over away, then form
-  // desc, then points-per-game desc - a genuine tie after all of that is settled by coin toss (see
-  // shuffleTiedGroups), not by this comparator.
+  // Effective points (this gameweek's own fixture count applied - see effectivePoints()) desc, then
+  // fixture difficulty asc (easier wins), then home over away, then form desc, then points-per-game
+  // desc - a genuine tie after all of that is settled by coin toss (see shuffleTiedGroups), not by
+  // this comparator.
   private static final Comparator<Player> RANKING = Comparator
-      .comparingInt(Player::getPoints).reversed()
+      .comparingInt(OptimalElevenSelector::effectivePoints).reversed()
       .thenComparingInt(OptimalElevenSelector::fixtureDifficultyRank)
       .thenComparingInt(OptimalElevenSelector::homeRank)
       .thenComparing(Player::getForm, Comparator.reverseOrder())
@@ -167,30 +168,43 @@ public final class OptimalElevenSelector {
 
   private static boolean isTied(final Player first, final Player second) {
 
-    return first.getPoints() == second.getPoints()
+    return effectivePoints(first) == effectivePoints(second)
         && fixtureDifficultyRank(first) == fixtureDifficultyRank(second)
         && homeRank(first) == homeRank(second)
         && first.getForm().compareTo(second.getForm()) == 0
         && first.getPointsPerGame().compareTo(second.getPointsPerGame()) == 0;
   }
 
+  // Season-to-date points scaled by how many fixtures this player's team has in the gameweek being
+  // planned for - the same idea as StartingElevenSelector's own effectivePoints (kept as a separate
+  // copy here, not shared, per this file's own top comment on staying independent from that
+  // selector), so a double gameweek makes someone a stronger captaincy/lineup pick and a blank one a
+  // weaker one, here too.
+  private static int effectivePoints(final Player player) {
+
+    return player.getPoints() * player.getNextFixtures().size();
+  }
+
+  // A double gameweek's fixtures are ranked by their first (earliest-kickoff) one - the tiebreak
+  // below this in RANKING (form, then points-per-game) is what actually separates two players who
+  // both have one, so this doesn't need to average or otherwise combine several fixtures' ratings.
   private static int fixtureDifficultyRank(final Player player) {
 
-    final Fixture fixture = player.getNextFixture();
-    return fixture == null ? NO_FIXTURE_DIFFICULTY : fixture.getDifficulty();
+    final List<Fixture> fixtures = player.getNextFixtures();
+    return fixtures.isEmpty() ? NO_FIXTURE_DIFFICULTY : fixtures.get(0).getDifficulty();
   }
 
   private static int homeRank(final Player player) {
 
-    final Fixture fixture = player.getNextFixture();
-    return fixture != null && fixture.isHome() ? 0 : 1;
+    final List<Fixture> fixtures = player.getNextFixtures();
+    return !fixtures.isEmpty() && fixtures.get(0).isHome() ? 0 : 1;
   }
 
   private static int[] prefixPoints(final List<Player> ranked) {
 
     final int[] prefix = new int[ranked.size() + 1];
     for (int i = 0; i < ranked.size(); i++) {
-      prefix[i + 1] = prefix[i] + ranked.get(i).getPoints();
+      prefix[i + 1] = prefix[i] + effectivePoints(ranked.get(i));
     }
 
     return prefix;

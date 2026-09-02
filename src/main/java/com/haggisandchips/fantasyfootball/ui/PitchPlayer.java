@@ -11,6 +11,7 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 // A player rendered as their real club shirt (fetched from FPL's own CDN, keyed by team_code -
 // see Player.teamCode), their name, a cost/points line, a form/points-per-game line, and a fourth
@@ -78,7 +79,7 @@ final class PitchPlayer extends VBox {
 
   private final Label fixtureLabel;
 
-  private final Fixture nextFixture;
+  private final List<Fixture> nextFixtures;
 
   static PitchPlayer of(final Player player) {
 
@@ -157,8 +158,8 @@ final class PitchPlayer extends VBox {
     statsLabel = new Label(String.format("Form %.1f · PPG %.1f", player.getForm(), player.getPointsPerGame()));
     statsLabel.getStyleClass().add("player-detail");
 
-    nextFixture = player.getNextFixture();
-    fixtureLabel = new Label(fixtureText(nextFixture));
+    nextFixtures = player.getNextFixtures();
+    fixtureLabel = new Label(fixtureText(nextFixtures));
     fixtureLabel.getStyleClass().add("player-fixture");
 
     setAlignment(Pos.CENTER);
@@ -167,13 +168,24 @@ final class PitchPlayer extends VBox {
     setShirtSize(MAX_SHIRT_SIZE);
   }
 
-  // "Opponent (H/A) · FDR n" - or a placeholder for a team with no fixture in the current window (a
-  // blank gameweek), which FplPlayerDataClient.attachNextFixtures leaves as null rather than omitting.
-  private static String fixtureText(final Fixture fixture) {
+  // "Opponent (H/A)" per fixture, "; "-separated for a double gameweek - no FDR number, since the
+  // card's own text colour already conveys the worst of however many fixtures there are (see
+  // worstDifficulty()) without needing the card any wider. A placeholder covers a team with no
+  // fixture at all (a blank gameweek) - see Player.nextFixtures.
+  private static String fixtureText(final List<Fixture> fixtures) {
 
-    return fixture == null
-        ? "No fixture"
-        : String.format("%s (%s) · FDR %d", fixture.getOpponent(), fixture.isHome() ? "H" : "A", fixture.getDifficulty());
+    if (fixtures.isEmpty()) {
+      return "No fixture";
+    }
+
+    return fixtures.stream()
+        .map(fixture -> String.format("%s (%s)", fixture.getOpponent(), fixture.isHome() ? "H" : "A"))
+        .collect(Collectors.joining("; "));
+  }
+
+  private static int worstDifficulty(final List<Fixture> fixtures) {
+
+    return fixtures.stream().mapToInt(Fixture::getDifficulty).max().orElseThrow();
   }
 
   // FPL's own 1 (easiest, green) - 5 (hardest, red) fixture difficulty colour scale.
@@ -212,10 +224,13 @@ final class PitchPlayer extends VBox {
     detailLabel.setStyle(String.format("-fx-font-size: %.0fpx;", detailFontSize(size)));
     statsLabel.setStyle(String.format("-fx-font-size: %.0fpx;", detailFontSize(size)));
 
+    // The single hardest (highest-numbered) fixture's colour, when there's more than one - the
+    // more cautious of the two rather than an average, since a bad one still risks a benching/
+    // low return regardless of how easy the other looks.
     final String fixtureFontSize = String.format("-fx-font-size: %.0fpx;", detailFontSize(size));
-    final String fixtureFill = nextFixture == null
+    final String fixtureFill = nextFixtures.isEmpty()
         ? ""
-        : String.format(" -fx-text-fill: %s;", difficultyColor(nextFixture.getDifficulty()));
+        : String.format(" -fx-text-fill: %s;", difficultyColor(worstDifficulty(nextFixtures)));
     fixtureLabel.setStyle(fixtureFontSize + fixtureFill);
   }
 
