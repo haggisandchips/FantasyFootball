@@ -13,10 +13,11 @@ import javafx.scene.layout.VBox;
 import java.util.List;
 
 // A player rendered as their real club shirt (fetched from FPL's own CDN, keyed by team_code -
-// see Player.teamCode), their name, a secondary cost/points line, and a third line for their next
-// fixture - used both positioned on the pitch (where setShirtSize() lets PitchView shrink/grow it
-// as the window resizes) and in ordinary flow layouts (TransfersTab's suggestion pairs and injured
-// list, always at MAX_SHIRT_SIZE). The killer team list renders its own cards, not PitchPlayer.
+// see Player.teamCode), their name, a cost/points line, a form/points-per-game line, and a fourth
+// line for their next fixture - used both positioned on the pitch (where setShirtSize() lets
+// PitchView shrink/grow it as the window resizes) and in ordinary flow layouts (TransfersTab's
+// suggestion pairs and injured list, always at MAX_SHIRT_SIZE). The killer team list renders its
+// own cards, not PitchPlayer.
 final class PitchPlayer extends VBox {
 
   // A captaincy indicator - "outgoing" (red) marks the current C/V choice being replaced by
@@ -72,6 +73,8 @@ final class PitchPlayer extends VBox {
   private final Label nameLabel;
 
   private final Label detailLabel;
+
+  private final Label statsLabel;
 
   private final Label fixtureLabel;
 
@@ -151,12 +154,15 @@ final class PitchPlayer extends VBox {
     detailLabel = new Label(detailText);
     detailLabel.getStyleClass().add("player-detail");
 
+    statsLabel = new Label(String.format("Form %.1f · PPG %.1f", player.getForm(), player.getPointsPerGame()));
+    statsLabel.getStyleClass().add("player-detail");
+
     nextFixture = player.getNextFixture();
     fixtureLabel = new Label(fixtureText(nextFixture));
     fixtureLabel.getStyleClass().add("player-fixture");
 
     setAlignment(Pos.CENTER);
-    getChildren().addAll(shirtPane, nameLabel, detailLabel, fixtureLabel);
+    getChildren().addAll(shirtPane, nameLabel, detailLabel, statsLabel, fixtureLabel);
 
     setShirtSize(MAX_SHIRT_SIZE);
   }
@@ -204,6 +210,7 @@ final class PitchPlayer extends VBox {
 
     nameLabel.setStyle(String.format("-fx-font-size: %.0fpx;", Math.clamp(size * 0.13, 9, 13)));
     detailLabel.setStyle(String.format("-fx-font-size: %.0fpx;", detailFontSize(size)));
+    statsLabel.setStyle(String.format("-fx-font-size: %.0fpx;", detailFontSize(size)));
 
     final String fixtureFontSize = String.format("-fx-font-size: %.0fpx;", detailFontSize(size));
     final String fixtureFill = nextFixture == null

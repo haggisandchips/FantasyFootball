@@ -3,7 +3,7 @@ package com.haggisandchips.fantasyfootball.util;
 import java.util.ArrayList;
 import java.util.List;
 
-public class PermutationGeneratorImpl<T> implements PermutationGenerator<T> {
+public class CombinationGeneratorImpl<T> implements CombinationGenerator<T> {
 
   private final List<T> objects;
 
@@ -15,7 +15,7 @@ public class PermutationGeneratorImpl<T> implements PermutationGenerator<T> {
 
   private boolean hasMore = true;
 
-  public PermutationGeneratorImpl(final List<T> objects, final int r) {
+  public CombinationGeneratorImpl(final List<T> objects, final int r) {
 
     this.r = r;
     this.n = objects.size();
@@ -40,13 +40,13 @@ public class PermutationGeneratorImpl<T> implements PermutationGenerator<T> {
   public List<T> getNext() {
 
     if (!hasMore) {
-      throw new IllegalStateException("There are no more permutations available.");
+      throw new IllegalStateException("There are no more combinations available.");
     }
 
-    final List<T> permutation = new ArrayList<>(r);
+    final List<T> combination = new ArrayList<>(r);
 
     for (int ii : positions) {
-      permutation.add(objects.get(ii));
+      combination.add(objects.get(ii));
     }
 
     int lastPos = incrementPosition(r - 1);
@@ -55,7 +55,7 @@ public class PermutationGeneratorImpl<T> implements PermutationGenerator<T> {
       hasMore = false;
     }
 
-    return permutation;
+    return combination;
   }
 
   private int incrementPosition(int ii) {

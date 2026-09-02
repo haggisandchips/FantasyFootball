@@ -3,11 +3,9 @@ package com.haggisandchips.fantasyfootball.ui;
 import com.haggisandchips.fantasyfootball.FantasyFootballApplication;
 import com.haggisandchips.fantasyfootball.auth.FplTokenHolder;
 import com.haggisandchips.fantasyfootball.auth.TokenStore;
-import com.haggisandchips.fantasyfootball.calculation.TransferSearchProgressListener;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.Squad;
 import com.haggisandchips.fantasyfootball.domain.Strategy;
-import com.haggisandchips.fantasyfootball.domain.TransferSuggestion;
 import com.haggisandchips.fantasyfootball.report.AnalysisReporter;
 import com.haggisandchips.fantasyfootball.service.TeamAnalysisService;
 import javafx.application.Application;
@@ -52,7 +50,7 @@ public class FantasyFootballDesktopApp extends Application {
     @Override
     public String toString(final Strategy strategy) {
       return switch (strategy) {
-        case SCORE -> "Score";
+        case POINTS -> "Points";
         case FORM -> "Form";
         case POINTS_PER_GAME -> "Points per game";
       };
@@ -89,8 +87,9 @@ public class FantasyFootballDesktopApp extends Application {
     final Tab mySquadTab = new Tab("My Squad", loadingPane());
     mySquadTab.setClosable(false);
 
-    final Tab transfersTab = new Tab("Transfers", loadingPane());
-    transfersTab.setClosable(false);
+    final TransfersTab transfersTab = new TransfersTab();
+    final Tab transfersTabWrapper = new Tab("Transfers", transfersTab);
+    transfersTabWrapper.setClosable(false);
 
     final TeamAnalysisService teamAnalysisService = springContext.getBean(TeamAnalysisService.class);
     final AnalysisReporter analysisReporter = springContext.getBean(AnalysisReporter.class);
@@ -99,7 +98,7 @@ public class FantasyFootballDesktopApp extends Application {
     final Tab killerTeamTabWrapper = new Tab("Killer Team", killerTeamTab);
     killerTeamTabWrapper.setClosable(false);
 
-    final TabPane tabPane = new TabPane(mySquadTab, transfersTab, killerTeamTabWrapper);
+    final TabPane tabPane = new TabPane(mySquadTab, transfersTabWrapper, killerTeamTabWrapper);
     VBox.setVgrow(tabPane, Priority.ALWAYS);
 
     final Runnable reload = () ->
@@ -165,7 +164,7 @@ public class FantasyFootballDesktopApp extends Application {
 
   private void loadSquadThenTransfers(
       final Stage stage, final TeamAnalysisService teamAnalysisService, final AnalysisReporter analysisReporter,
-      final Tab mySquadTab, final Tab transfersTab, final KillerTeamTab killerTeamTab) {
+      final Tab mySquadTab, final TransfersTab transfersTab, final KillerTeamTab killerTeamTab) {
 
     final Task<List<Player>> allPlayersTask = new Task<>() {
       @Override
@@ -185,7 +184,7 @@ public class FantasyFootballDesktopApp extends Application {
     allPlayersTask.setOnFailed(event -> {
       final String message = describe(allPlayersTask.getException());
       mySquadTab.setContent(errorPane(message));
-      transfersTab.setContent(errorPane(message));
+      transfersTab.showError(message);
       killerTeamTab.showError(message);
     });
 
@@ -194,7 +193,7 @@ public class FantasyFootballDesktopApp extends Application {
 
   private void loadMySquad(
       final Stage stage, final TeamAnalysisService teamAnalysisService, final AnalysisReporter analysisReporter,
-      final Tab mySquadTab, final Tab transfersTab, final KillerTeamTab killerTeamTab, final List<Player> allPlayers) {
+      final Tab mySquadTab, final TransfersTab transfersTab, final KillerTeamTab killerTeamTab, final List<Player> allPlayers) {
 
     final Task<Squad> squadTask = new Task<>() {
       @Override
@@ -230,50 +229,19 @@ public class FantasyFootballDesktopApp extends Application {
       // against the current squad even when the rest of its state is left alone.
       killerTeamTab.init(teamAnalysisService, allPlayers, mySquad, analysisReporter::reportKillerTeam, onTransferExecuted);
 
-      loadTransferSuggestions(teamAnalysisService, analysisReporter, transfersTab, mySquad, allPlayers, onTransferExecuted);
+      // Needs mySquad for the same reason killerTeamTab.init() does above - and is likewise a no-op
+      // after the first call, refreshing mySquad/onTransferExecuted but leaving the tab's own
+      // strategy selection and per-strategy cache alone.
+      transfersTab.init(teamAnalysisService, allPlayers, mySquad, analysisReporter::reportTransferSuggestions, onTransferExecuted);
     });
 
     squadTask.setOnFailed(event -> {
       final String message = describe(squadTask.getException());
       mySquadTab.setContent(errorPane(message));
-      transfersTab.setContent(errorPane(message));
+      transfersTab.showError(message);
     });
 
     Thread.ofVirtual().name("fetch-squad").start(squadTask);
-  }
-
-  private void loadTransferSuggestions(
-      final TeamAnalysisService teamAnalysisService, final AnalysisReporter analysisReporter,
-      final Tab transfersTab, final Squad mySquad, final List<Player> allPlayers, final Runnable onTransferExecuted) {
-
-    final Task<List<TransferSuggestion>> transfersTask = new Task<>() {
-      @Override
-      protected List<TransferSuggestion> call() {
-
-        final TransferSearchProgressListener progressListener = (transferBudget, evaluated, total) -> {
-          updateMessage(String.format(
-              "Evaluating %d-transfer combinations: %,d / %,d", transferBudget, evaluated, total));
-          updateProgress(evaluated, Math.max(total, 1));
-        };
-
-        return teamAnalysisService.calculateTransferSuggestions(mySquad, allPlayers, progressListener);
-      }
-    };
-
-    transfersTab.setContent(progressPane(transfersTask));
-
-    transfersTask.setOnSucceeded(event -> {
-      final List<TransferSuggestion> rawSuggestions = transfersTask.getValue();
-      analysisReporter.reportTransferSuggestions(
-          Strategy.SCORE, teamAnalysisService.rankTransferSuggestions(rawSuggestions, Strategy.SCORE));
-
-      transfersTab.setContent(new TransfersTab(mySquad, rawSuggestions, teamAnalysisService, onTransferExecuted));
-    });
-
-    transfersTask.setOnFailed(event ->
-        transfersTab.setContent(errorPane(describe(transfersTask.getException()))));
-
-    Thread.ofVirtual().name("calculate-transfers").start(transfersTask);
   }
 
   @Override

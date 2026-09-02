@@ -2,7 +2,7 @@ package com.haggisandchips.fantasyfootball.util;
 
 import java.util.List;
 
-public interface PermutationGenerator<T> {
+public interface CombinationGenerator<T> {
 
   boolean hasMore();
 

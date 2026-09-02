@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 // Suggests who out of a 15-man squad should start (any legal FPL formation), and who should
 // captain/vice-captain them - a purely advisory overlay for the My Squad pitch (see ui.PitchView),
 // never mutating the squad itself. Deliberately separate from StartingElevenSelector (which picks
-// KillerTeamFinder's from-scratch dream XI, ranked by cost-tiebroken score) since the ranking here
+// KillerTeamFinder's from-scratch dream XI, ranked by cost-tiebroken points) since the ranking here
 // is explicitly different - fixture difficulty, venue, form and points-per-game as successive
 // tiebreakers instead of cost - and the two must stay independent so this never affects the killer
 // team.
@@ -41,7 +41,7 @@ public final class OptimalElevenSelector {
   // gameweek) always loses a fixture-difficulty tiebreak against one that actually has a game.
   private static final int NO_FIXTURE_DIFFICULTY = 6;
 
-  // Score (points) desc, then fixture difficulty asc (easier wins), then home over away, then form
+  // Points desc, then fixture difficulty asc (easier wins), then home over away, then form
   // desc, then points-per-game desc - a genuine tie after all of that is settled by coin toss (see
   // shuffleTiedGroups), not by this comparator.
   private static final Comparator<Player> RANKING = Comparator
@@ -100,7 +100,7 @@ public final class OptimalElevenSelector {
   }
 
   // Tries every formation FPL allows (1 GK, 3-5 DEF, 2-5 MID, 1-3 FWD, 11 total) and keeps whichever
-  // fields the highest total score - a tie (identical total across formations) keeps whichever was
+  // fields the highest total points - a tie (identical total across formations) keeps whichever was
   // found first, which only happens when every player-level tiebreak above was already exhausted
   // too (equal points sums can't otherwise arise once genuine ties are coin-tossed within a
   // position), so no further tiebreak is needed here.

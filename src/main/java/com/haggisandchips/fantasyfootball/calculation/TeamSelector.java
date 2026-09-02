@@ -6,10 +6,11 @@ import com.haggisandchips.fantasyfootball.domain.PlayerLine;
 import com.haggisandchips.fantasyfootball.domain.Position;
 import com.haggisandchips.fantasyfootball.domain.Strategy;
 import com.haggisandchips.fantasyfootball.domain.Team;
-import com.haggisandchips.fantasyfootball.util.PermutationGenerator;
-import com.haggisandchips.fantasyfootball.util.PermutationGeneratorImpl;
+import com.haggisandchips.fantasyfootball.util.CombinationGenerator;
+import com.haggisandchips.fantasyfootball.util.CombinationGeneratorImpl;
 import lombok.extern.slf4j.Slf4j;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -21,10 +22,10 @@ import java.util.TreeSet;
 @Slf4j
 public class TeamSelector {
 
-  public static Map<Position, Map<Integer, Set<PlayerLine>>> buildPermutations(
+  public static Map<Position, Map<BigDecimal, Set<PlayerLine>>> buildCombinations(
       final Strategy strategyOption, final Map<Position, List<Player>> players,
       final Map<Position, Double> minimumThresholds) {
-    final Map<Position, Map<Integer, Set<PlayerLine>>> permutations =
+    final Map<Position, Map<BigDecimal, Set<PlayerLine>>> combinations =
         new TreeMap<>();
 
     for (final Position position : players.keySet()) {
@@ -38,11 +39,11 @@ public class TeamSelector {
           position, filtered.size(), pool.size(), threshold, strategyOption.name());
 
       final long rawCombinations = combinationCount(filtered.size(), position.getNumber());
-      if (rawCombinations > Controls.MAX_RAW_PERMUTATIONS_PER_POSITION) {
+      if (rawCombinations > Controls.MAX_RAW_COMBINATIONS_PER_POSITION) {
         throw new IllegalStateException(String.format(
             "%s minimum threshold of %s keeps %d players, which would generate %,d combinations "
                 + "(limit %,d) - raise the minimum threshold to shrink the pool.",
-            position, threshold, filtered.size(), rawCombinations, Controls.MAX_RAW_PERMUTATIONS_PER_POSITION));
+            position, threshold, filtered.size(), rawCombinations, Controls.MAX_RAW_COMBINATIONS_PER_POSITION));
       }
 
       players.put(position, filtered);
@@ -50,42 +51,42 @@ public class TeamSelector {
 
     for (final Position position : players.keySet()) {
 
-      final Map<Integer, Set<PlayerLine>> playerLines = new TreeMap<>();
-      permutations.put(position, playerLines);
+      // Bucketed by the chosen strategy's own aggregate (Strategy.lineStat) - not always total
+      // points - so KillerTeamFinder.isBetter (which compares by that same strategy) evaluates
+      // combinations in the order that actually matters for the strategy in play, and so
+      // MAX_COMBINATIONS_PER_BUCKET's per-bucket cap (see PlayerLine.compareTo) trims by cost within
+      // groups that are actually tied on the stat being optimised for, rather than tied on points
+      // while potentially differing widely on form/points-per-game.
+      final Map<BigDecimal, Set<PlayerLine>> playerLines = new TreeMap<>();
+      combinations.put(position, playerLines);
 
-      final PermutationGenerator<Player> generator =
-          new PermutationGeneratorImpl<>(players.get(position), position.getNumber());
+      final CombinationGenerator<Player> generator =
+          new CombinationGeneratorImpl<>(players.get(position), position.getNumber());
 
       while (generator.hasMore()) {
         final List<Player> tempPlayers = generator.getNext();
 
         final PlayerLine playerLine = new PlayerLine(position, tempPlayers);
-        final Integer score = playerLine.getPoints();
+        final BigDecimal statValue = strategyOption.getLineStat().apply(playerLine);
 
-        final Set<PlayerLine> scoreLines;
-        if (playerLines.containsKey(score)) {
-          scoreLines = playerLines.get(score);
-        } else {
-          scoreLines = new TreeSet<>();
-          playerLines.put(score, scoreLines);
-        }
-        scoreLines.add(playerLine);
+        final Set<PlayerLine> statLines = playerLines.computeIfAbsent(statValue, key -> new TreeSet<>());
+        statLines.add(playerLine);
       }
     }
 
     if (log.isDebugEnabled()) {
-      for (Map.Entry<Position, Map<Integer, Set<PlayerLine>>> entry : permutations.entrySet()) {
+      for (Map.Entry<Position, Map<BigDecimal, Set<PlayerLine>>> entry : combinations.entrySet()) {
         int count = 0;
         for (Set<PlayerLine> playerLines : entry.getValue().values()) {
           count += playerLines.size();
         }
         log.debug(
             String.format(
-                "Found %d permutations of %ss.", count, entry.getKey().name().toLowerCase()));
+                "Found %d combinations of %ss.", count, entry.getKey().name().toLowerCase()));
       }
     }
 
-    return permutations;
+    return combinations;
   }
 
   // C(n, r), computed via the standard incremental multiply-then-divide-by-i order, which keeps
@@ -107,14 +108,15 @@ public class TeamSelector {
   }
 
   // Exactly the number KillerTeamFinder.find() will evaluate for this position - for each distinct
-  // points-total (see PlayerLine's constructor: sum of player.getPoints() * fixture multiplier), how
-  // many r-player subsets reach it, capped at Controls.MAX_PERMUTATIONS_PER_SCORE per total (matching
-  // the cap KillerTeamFinder applies per score bucket). Computed via a subset-sum counting DP rather
-  // than enumerating the underlying C(pool.size(), r) combinations (see buildPermutations) - a wide
-  // pool can put that count in the hundreds of millions, but the DP's cost only depends on the (tiny,
-  // real point totals are a bounded range) number of distinct running sums encountered, so it stays
-  // fast regardless of pool size. Lets KillerTeamTab show the live "combinations" estimate without
-  // ever materializing a single PlayerLine.
+  // Strategy.lineStat total (see PlayerLine's constructor: sum of points/form/points-per-game
+  // weighted by fixture multiplier), how many r-player subsets reach it, capped at
+  // Controls.MAX_COMBINATIONS_PER_BUCKET per total (matching the cap KillerTeamFinder applies per
+  // bucket). Computed via a subset-sum counting DP rather than enumerating the underlying
+  // C(pool.size(), r) combinations (see buildCombinations) - a wide pool can put that count in the
+  // hundreds of millions, but the DP's cost only depends on the (tiny, real stat totals are a
+  // bounded range) number of distinct running sums encountered, so it stays fast regardless of pool
+  // size. Lets KillerTeamTab show the live "combinations" estimate without ever materializing a
+  // single PlayerLine.
   public static long countCappedCombinations(
       final Strategy strategyOption, final Map<Position, List<Player>> players,
       final Map<Position, Double> minimumThresholds) {
@@ -127,31 +129,37 @@ public class TeamSelector {
           .filter(player -> strategyOption.getPlayerStat().apply(player) >= threshold)
           .toList();
 
-      total *= countCappedSubsets(filtered, position.getNumber(), Controls.MAX_PERMUTATIONS_PER_SCORE);
+      total *= countCappedSubsets(strategyOption, filtered, position.getNumber(), Controls.MAX_COMBINATIONS_PER_BUCKET);
     }
 
     return total;
   }
 
-  // ways[k] maps a running points-total to how many k-player subsets of the pool processed so far
+  // ways[k] maps a running stat-total to how many k-player subsets of the pool processed so far
   // reach it, saturated at cap + 1 (once a total has more than `cap` subsets, KillerTeamFinder only
   // ever uses `cap` of them, so there's no need to keep counting exactly). Standard 0/1-knapsack-style
   // subset counting: iterating k from r down to 1 for each player means ways[k - 1] is always read in
-  // the state it was in *before* that player, so nothing gets counted against itself twice.
-  private static long countCappedSubsets(final List<Player> pool, final int r, final int cap) {
+  // the state it was in *before* that player, so nothing gets counted against itself twice. Keys are
+  // stripped of trailing zeros before use so two sums that are numerically equal but arrived via a
+  // different scale (e.g. a fresh BigDecimal.ZERO vs. one built up through several adds) are always
+  // treated as the same bucket, matching buildCombinations' own TreeMap (whose ordering, unlike a
+  // HashMap's equals/hashCode, already treats them as equal).
+  private static long countCappedSubsets(
+      final Strategy strategyOption, final List<Player> pool, final int r, final int cap) {
 
-    final List<Map<Integer, Long>> ways = new ArrayList<>(r + 1);
+    final List<Map<BigDecimal, Long>> ways = new ArrayList<>(r + 1);
     for (int k = 0; k <= r; k++) {
       ways.add(new HashMap<>());
     }
-    ways.get(0).put(0, 1L);
+    ways.get(0).put(BigDecimal.ZERO, 1L);
 
     for (final Player player : pool) {
-      final int value = player.getPoints() * Controls.getFixtureMultiplier(player.getTeam());
+      final BigDecimal value = strategyOption.getWeightedPlayerStat().apply(player);
 
       for (int k = r; k >= 1; k--) {
-        for (final Map.Entry<Integer, Long> entry : ways.get(k - 1).entrySet()) {
-          ways.get(k).merge(entry.getKey() + value, entry.getValue(),
+        for (final Map.Entry<BigDecimal, Long> entry : ways.get(k - 1).entrySet()) {
+          final BigDecimal key = entry.getKey().add(value).stripTrailingZeros();
+          ways.get(k).merge(key, entry.getValue(),
               (existing, added) -> Math.min(cap + 1L, existing + added));
         }
       }

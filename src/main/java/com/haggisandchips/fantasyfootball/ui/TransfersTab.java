@@ -1,5 +1,6 @@
 package com.haggisandchips.fantasyfootball.ui;
 
+import com.haggisandchips.fantasyfootball.calculation.TransferSearchProgressListener;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.Squad;
 import com.haggisandchips.fantasyfootball.domain.Status;
@@ -10,6 +11,7 @@ import javafx.collections.FXCollections;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
@@ -30,7 +32,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.function.BiConsumer;
 
+// The transfer search is a genuinely strategy-dependent combinatorial search (see TransferSelector -
+// which candidates even get considered, and whether a combination counts as an improvement, both
+// depend on the chosen stat), so this tab re-runs the whole search whenever the strategy dropdown
+// changes, exactly like KillerTeamTab (including a cache, here just keyed by Strategy, and
+// cancel-in-flight handling) - the one difference being there's no separate "Calculate" button here:
+// the first search kicks off automatically as soon as init() has a squad to search from.
 class TransfersTab extends ScrollPane {
 
   // A suggestion's card width is fixed per transfer count (every card in one refresh shows the
@@ -43,53 +52,183 @@ class TransfersTab extends ScrollPane {
   // short of its budget and wraps a pair onto its own line, needlessly tallening the card.
   private static final double CARD_HORIZONTAL_PADDING = 28;
 
-  private final Squad mySquad;
-
-  private final TeamAnalysisService teamAnalysisService;
-
-  // Re-runs the whole fetch-squad-then-suggest pipeline (see FantasyFootballDesktopApp) after a
-  // transfer is successfully submitted - the live squad (picks, bank, free transfers) has changed
-  // underneath this tab's in-memory state, so it's simplest to just refetch and rebuild from scratch.
-  private final Runnable onTransferExecuted;
-
-  // The expensive, strategy-independent search result (see TeamAnalysisService), computed once for
-  // this squad - ranking it per strategy (below) is cheap, so switching strategies never needs to
-  // re-run the search itself.
-  private final List<TransferSuggestion> rawSuggestions;
-
-  // Ranking a strategy is cheap - just sorting/limiting rawSuggestions (see
-  // TeamAnalysisService.rankTransferSuggestions) - so switching strategies is instant; still cached
-  // so repeated switches don't even redo that cheap work.
-  private final Map<Strategy, Map<Integer, List<TransferSuggestion>>> rankedByStrategy = new HashMap<>();
-
   private final ComboBox<Strategy> strategyDropdown = new ComboBox<>(FXCollections.observableArrayList(Strategy.values()));
 
-  // Holds the transfer-count toggle + suggestionsBox, rebuilt wholesale on every strategy switch.
+  // Rebuilt (not just its children replaced) on every strategy switch, alongside suggestionsBox.
   private final VBox transferSection = new VBox(16);
 
   private final FlowPane suggestionsBox = new FlowPane(16, 16);
 
+  private final HBox header;
+
+  // Every strategy's search result calculated so far, already ranked/grouped by transfer count (see
+  // TeamAnalysisService.rankTransferSuggestions) - switching back to an already-seen strategy shows
+  // it instantly instead of re-running the expensive search.
+  private final Map<Strategy, Map<Integer, List<TransferSuggestion>>> cache = new HashMap<>();
+
+  private TeamAnalysisService teamAnalysisService;
+
+  private List<Player> allPlayers;
+
+  // Refreshed on every init() call (unlike the rest of this tab's state, which is one-time - see
+  // init()'s own comment) so a submitted transfer always shows against the squad as it currently
+  // stands, even after it's changed underneath an already-displayed (cached) result.
+  private Squad mySquad;
+
+  private Runnable onTransferExecuted;
+
+  // Reports each freshly calculated (not cache-hit) strategy's ranking, mirroring KillerTeamTab's
+  // own onResult callback - wired to AnalysisReporter::reportTransferSuggestions.
+  private BiConsumer<Strategy, Map<Integer, List<TransferSuggestion>>> onResult;
+
   private Map<Integer, List<TransferSuggestion>> suggestionsByCount;
 
-  TransfersTab(
-      final Squad mySquad, final List<TransferSuggestion> rawSuggestions,
-      final TeamAnalysisService teamAnalysisService, final Runnable onTransferExecuted) {
+  // The strategy the user currently has selected - lets a task whose result arrives after the user
+  // has since switched to a different strategy recognise it's stale (still caches its result, just
+  // doesn't clobber what's now on screen with it).
+  private Strategy currentStrategy;
 
-    this.mySquad = mySquad;
-    this.rawSuggestions = rawSuggestions;
-    this.teamAnalysisService = teamAnalysisService;
-    this.onTransferExecuted = onTransferExecuted;
+  // The currently in-flight search, if any - see KillerTeamTab's own runningTask for why this
+  // exists (starting a second search without cancelling this first would leave both running
+  // concurrently, fighting for CPU and making both look hung).
+  private Task<List<TransferSuggestion>> runningTask;
+
+  TransfersTab() {
+
+    strategyDropdown.setValue(Strategy.POINTS);
+    strategyDropdown.setConverter(FantasyFootballDesktopApp.STRATEGY_LABELS);
+    strategyDropdown.setDisable(true);
+    strategyDropdown.setOnAction(event -> triggerForCurrentSelection());
 
     suggestionsBox.setAlignment(Pos.CENTER);
 
-    strategyDropdown.setValue(Strategy.SCORE);
-    strategyDropdown.setConverter(FantasyFootballDesktopApp.STRATEGY_LABELS);
-    strategyDropdown.setOnAction(event -> rebuildTransferSection());
-
-    rebuildTransferSection();
-
-    final HBox header = new HBox(12, sectionLabel("Suggested Transfers"), strategyDropdown);
+    header = new HBox(12, sectionLabel("Suggested Transfers"), strategyDropdown);
     header.setAlignment(Pos.CENTER_LEFT);
+
+    setFitToWidth(true);
+    showLoading(new Label("Loading transfer suggestions..."));
+  }
+
+  // The one-time setup below is a no-op after the first call - a submitted transfer (see
+  // FantasyFootballDesktopApp) re-fetches the squad and calls this again, but that must not reset
+  // the user's chosen strategy or throw away the cache just because the live squad changed
+  // elsewhere. mySquad/onTransferExecuted are the exception - refreshed unconditionally on every
+  // call, same as KillerTeamTab's own init().
+  void init(
+      final TeamAnalysisService teamAnalysisService, final List<Player> allPlayers, final Squad mySquad,
+      final BiConsumer<Strategy, Map<Integer, List<TransferSuggestion>>> onResult, final Runnable onTransferExecuted) {
+
+    this.mySquad = mySquad;
+    this.onTransferExecuted = onTransferExecuted;
+
+    if (this.teamAnalysisService != null) {
+      return;
+    }
+
+    this.teamAnalysisService = teamAnalysisService;
+    this.allPlayers = allPlayers;
+    this.onResult = onResult;
+
+    strategyDropdown.setDisable(false);
+    triggerForCurrentSelection();
+  }
+
+  private void triggerForCurrentSelection() {
+
+    final Strategy strategy = strategyDropdown.getValue();
+    currentStrategy = strategy;
+
+    if (cache.containsKey(strategy)) {
+      showResult(strategy);
+    } else {
+      runCalculation(strategy);
+    }
+  }
+
+  private void runCalculation(final Strategy strategy) {
+
+    cancelRunningTask();
+
+    final Task<List<TransferSuggestion>> task = new Task<>() {
+      @Override
+      protected List<TransferSuggestion> call() {
+
+        final TransferSearchProgressListener progressListener = (transferBudget, evaluated, total) -> {
+          updateMessage(String.format(
+              "Evaluating %d-transfer combinations: %,d / %,d", transferBudget, evaluated, total));
+          updateProgress(evaluated, Math.max(total, 1));
+        };
+
+        return teamAnalysisService.calculateTransferSuggestions(mySquad, allPlayers, strategy, progressListener);
+      }
+    };
+
+    runningTask = task;
+    showLoading(FantasyFootballDesktopApp.progressPane(task));
+
+    task.setOnSucceeded(event -> {
+      // Only if this is still the tracked task - see KillerTeamTab's own onSucceeded for why.
+      if (runningTask == task) {
+        runningTask = null;
+      }
+
+      final Map<Integer, List<TransferSuggestion>> ranked =
+          teamAnalysisService.rankTransferSuggestions(task.getValue(), strategy);
+      cache.put(strategy, ranked);
+      onResult.accept(strategy, ranked);
+
+      if (strategy.equals(currentStrategy)) {
+        showResult(strategy);
+      }
+    });
+
+    task.setOnFailed(event -> {
+      if (runningTask == task) {
+        runningTask = null;
+      }
+
+      if (strategy.equals(currentStrategy)) {
+        showLoading(new Label("Failed to calculate transfer suggestions: "
+            + FantasyFootballDesktopApp.describe(task.getException())));
+      }
+    });
+
+    Thread.ofVirtual().name("calculate-transfers").start(task);
+  }
+
+  // KillerTeamFinder's search checks Thread.currentThread().isInterrupted() every iteration to make
+  // cancel(true) (the default) actually stop the CPU-bound work rather than just the Task's own
+  // bookkeeping - TransferSelector does the same (see its SearchCancelled).
+  private void cancelRunningTask() {
+
+    if (runningTask == null) {
+      return;
+    }
+
+    runningTask.cancel();
+    runningTask = null;
+  }
+
+  // Shown while a search is in flight, or in place of it - keeps the header (and so the strategy
+  // dropdown) visible throughout rather than replacing the whole tab with a bare progress bar.
+  private void showLoading(final Node node) {
+
+    final VBox box = new VBox(16, header, node);
+    box.setPadding(new Insets(20));
+    setContent(box);
+  }
+
+  void showError(final String message) {
+
+    showLoading(new Label("Failed to load data: " + message));
+  }
+
+  private void showResult(final Strategy strategy) {
+
+    suggestionsByCount = new TreeMap<>(cache.get(strategy));
+
+    refreshSuggestions(defaultTransferCount());
+    transferSection.getChildren().setAll(transferCountToggle(), suggestionsBox);
 
     final VBox root = new VBox(16,
         header,
@@ -100,21 +239,10 @@ class TransfersTab extends ScrollPane {
     root.setPadding(new Insets(20));
 
     setContent(root);
-    setFitToWidth(true);
-  }
-
-  private void rebuildTransferSection() {
-
-    final Strategy strategy = strategyDropdown.getValue();
-    suggestionsByCount = new TreeMap<>(rankedByStrategy.computeIfAbsent(
-        strategy, s -> teamAnalysisService.rankTransferSuggestions(rawSuggestions, s)));
-
-    refreshSuggestions(defaultTransferCount());
-    transferSection.getChildren().setAll(transferCountToggle(), suggestionsBox);
   }
 
   // Picks whichever transfer count's best suggestion is the best overall - highest resulting team
-  // score, ties broken by lowest team cost, further ties broken by fewer transfers - rather than
+  // points, ties broken by lowest team cost, further ties broken by fewer transfers - rather than
   // always defaulting to a fixed count. Each count's list is already sorted best-first (see
   // TeamAnalysisServiceImpl.transferSuggestionComparator), so only its head needs comparing.
   private int defaultTransferCount() {

@@ -24,16 +24,16 @@ public class Team implements Comparable<Team> {
     this.playerLines = playerLines;
 
     BigDecimal costNow = new BigDecimal("0"), form = new BigDecimal("0"), pointsPerGame = new BigDecimal("0");
-    int score = 0;
+    int points = 0;
     for (final PlayerLine playerLine : playerLines) {
       costNow = costNow.add(playerLine.getCostNow());
-      score += playerLine.getPoints();
+      points += playerLine.getPoints();
       form = form.add(playerLine.getForm());
       pointsPerGame = pointsPerGame.add(playerLine.getPointsPerGame());
     }
 
     this.costNow = costNow;
-    this.points = score;
+    this.points = points;
     this.form = form;
     this.pointsPerGame = pointsPerGame;
   }

@@ -32,6 +32,18 @@ class MySquadTab extends BorderPane {
   // class purely to render a squad on a pitch.
   MySquadTab(final Squad squad, final TeamAnalysisService teamAnalysisService, final Runnable onSquadUpdated) {
 
+    this(squad, teamAnalysisService, onSquadUpdated, false);
+  }
+
+  // includeTeamStrategyStats also shows the squad's total Form and Points per Game alongside
+  // Overall Points - the other two Strategy options a Killer Team could have been built by, so its
+  // header ends up covering all three regardless of which one was actually used (see KillerTeamTab,
+  // the only caller that passes true - "Free Transfers" stays in the row even though it's always 0
+  // there, since it's simplest to leave the base three stats alone and just add to them).
+  MySquadTab(
+      final Squad squad, final TeamAnalysisService teamAnalysisService, final Runnable onSquadUpdated,
+      final boolean includeTeamStrategyStats) {
+
     // Computed once and shared with PitchView (whose arrows/badges already show this same
     // suggestion) and the button below, rather than each computing its own -
     // OptimalElevenSelector.select() breaks ties with its own internal Random, so two separate
@@ -40,7 +52,7 @@ class MySquadTab extends BorderPane {
     fullSquad.addAll(squad.getSubstitutes());
     final OptimalElevenSelector.Result optimal = OptimalElevenSelector.select(fullSquad);
 
-    setTop(header(squad));
+    setTop(header(squad, includeTeamStrategyStats));
     setCenter(new PitchView(squad, optimal));
 
     // Only offered against a real, logged-in FPL account - there's nothing to submit to otherwise
@@ -50,17 +62,24 @@ class MySquadTab extends BorderPane {
     }
   }
 
-  private HBox header(final Squad squad) {
+  private HBox header(final Squad squad, final boolean includeTeamStrategyStats) {
 
     final String overallPoints =
         squad.getOverallPoints() == null ? "N/A" : String.valueOf(squad.getOverallPoints());
     final String freeTransfers =
         squad.isUnlimitedTransfers() ? "∞" : String.valueOf(squad.getFreeTransfers());
 
-    final HBox header = new HBox(32,
+    final List<VBox> statBoxes = new ArrayList<>(List.of(
         statBox("Squad Value", String.format("£%.1fm", squad.getSquadValue())),
         statBox("Free Transfers", freeTransfers),
-        statBox("Overall Points", overallPoints));
+        statBox("Overall Points", overallPoints)));
+
+    if (includeTeamStrategyStats) {
+      statBoxes.add(statBox("Total Form", String.format("%.1f", squad.getTeam().getForm())));
+      statBoxes.add(statBox("Points per Game", String.format("%.1f", squad.getTeam().getPointsPerGame())));
+    }
+
+    final HBox header = new HBox(32, statBoxes.toArray(new VBox[0]));
     header.setAlignment(Pos.CENTER);
     header.setPadding(new Insets(16));
     header.getStyleClass().add("stat-bar");

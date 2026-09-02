@@ -59,7 +59,7 @@ import java.util.stream.Collectors;
 // plus a shared live estimate of the resulting total combinations, both updated on every change
 // (cheap - no search triggered) rather than only on commit. Each spinner's starting value is
 // calculated fresh from live player data (see calculateDefaultThreshold()), not a fixed number, so
-// it stays sane as the season's scores grow - the user can always override it (by typing, clicking
+// it stays sane as the season's points totals grow - the user can always override it (by typing, clicking
 // the spinner's arrows, or scrolling over it), and their edit sticks until the tab is rebuilt.
 // KillerTeamFinder only picks the best affordable 15-man squad, with no starting XI/bench split of
 // its own, so showResult() runs StartingElevenSelector over it and renders the result exactly like
@@ -96,7 +96,7 @@ class KillerTeamTab extends BorderPane {
   private final Map<KillerTeamCacheKey, Team> cache = new HashMap<>();
 
   // Independently-tunable minimum thresholds per strategy - editing GOALKEEPER's minimum while on
-  // FORM shouldn't affect what's shown/used after switching to SCORE and back.
+  // FORM shouldn't affect what's shown/used after switching to POINTS and back.
   private final Map<Strategy, Map<Position, Double>> thresholdsByStrategy = new EnumMap<>(Strategy.class);
 
   private TeamAnalysisService teamAnalysisService;
@@ -144,12 +144,12 @@ class KillerTeamTab extends BorderPane {
 
   KillerTeamTab() {
 
-    strategyDropdown.setValue(Strategy.SCORE);
+    strategyDropdown.setValue(Strategy.POINTS);
     strategyDropdown.setConverter(FantasyFootballDesktopApp.STRATEGY_LABELS);
     strategyDropdown.setDisable(true);
     strategyDropdown.setOnAction(event -> {
       displayThresholdsForCurrentStrategy();
-      triggerIfReady();
+      showCachedResultOrPromptCalculate();
     });
 
     budgetField.setPrefColumnCount(5);
@@ -234,9 +234,9 @@ class KillerTeamTab extends BorderPane {
       // Fires for every change, however it happened (typing + commit, arrow click, or scroll), as
       // well as for programmatic updates (see displayThresholdsForCurrentStrategy()) - the live
       // per-position count refresh should happen regardless (cheap - just a count), but
-      // refreshCombinationsEstimate() must not: it now runs the real buildPermutations(), and during
+      // refreshCombinationsEstimate() must not: it now runs the real buildCombinations(), and during
       // a bulk update the other 3 spinners can still be sitting at stale/default values (e.g. 0 -
-      // "no filter") until their turn in the loop comes, which would run that real permutation
+      // "no filter") until their turn in the loop comes, which would run that real combination
       // generation against a near-unfiltered pool - hundreds of millions of combinations, hanging
       // the UI thread. So, like the strategy-map write-back, it's held off until the whole bulk
       // update finishes (displayThresholdsForCurrentStrategy() does this itself, once, at the end).
@@ -395,12 +395,13 @@ class KillerTeamTab extends BorderPane {
   }
 
   // The exact same number Calculate will actually evaluate, without doing any of the work Calculate
-  // does - TeamSelector.countCappedCombinations gets there via a subset-sum DP over player point
-  // totals rather than by generating a single candidate team, so this stays fast (and safe to run on
-  // this, the FX Application Thread, on every keystroke/scroll) no matter how low a threshold is
-  // pushed. An earlier version of this method built the real permutations to get this number, which
-  // is what let a wide-open threshold (e.g. DEFENDER at 0, admitting the full ~150-player pool) hang
-  // the whole UI thread evaluating hundreds of millions of raw combinations synchronously.
+  // does - TeamSelector.countCappedCombinations gets there via a subset-sum DP over the chosen
+  // strategy's stat totals rather than by generating a single candidate team, so this stays fast
+  // (and safe to run on this, the FX Application Thread, on every keystroke/scroll) no matter how low
+  // a threshold is pushed. An earlier version of this method built the real combinations to get this
+  // number, which is what let a wide-open threshold (e.g. DEFENDER at 0, admitting the full
+  // ~150-player pool) hang the whole UI thread evaluating hundreds of millions of raw combinations
+  // synchronously.
   private void refreshCombinationsEstimate() {
 
     if (availablePlayersByPosition == null) {
@@ -425,6 +426,41 @@ class KillerTeamTab extends BorderPane {
 
     if (calculated) {
       triggerForCurrentSelection();
+    }
+  }
+
+  // Unlike triggerIfReady() (used by the budget field), switching strategy never silently launches
+  // a fresh search just because the dropdown changed - the previous strategy's result is still a
+  // meaningful, complete answer the user might come straight back to, so a search only ever starts
+  // from an explicit Calculate click. Shows the new strategy's own cached result if there is one,
+  // otherwise prompts for that click - same as before Calculate has ever been pressed at all.
+  private void showCachedResultOrPromptCalculate() {
+
+    if (!calculated) {
+      return;
+    }
+
+    final BigDecimal budget = parseBudget();
+    if (budget == null) {
+      return;
+    }
+
+    final Strategy strategy = strategyDropdown.getValue();
+    final Map<Position, Double> thresholds = Map.copyOf(thresholdsByStrategy.get(strategy));
+    final KillerTeamCacheKey key = new KillerTeamCacheKey(strategy, budget, thresholds);
+    currentKey = key;
+
+    // The in-flight search (if any) is for whichever selection the user is now navigating away
+    // from - cancelled rather than left running in the background, so "not cached yet" always means
+    // "no search is happening" and an explicit Calculate click never races a silent one already in
+    // flight for the same key.
+    cancelRunningTask();
+
+    if (cache.containsKey(key)) {
+      showResultOrNoTeamFound(cache.get(key), key.maxBudget());
+    } else {
+      setCenter(new StackPane(new Label("Click Calculate to build the best team for this strategy.")));
+      setBottom(null);
     }
   }
 
@@ -571,7 +607,7 @@ class KillerTeamTab extends BorderPane {
     // teamAnalysisService/onTransferExecuted are never touched here - this squad's own
     // TransferContext is always null (see Squad above), so MySquadTab never shows its
     // substitution button for it.
-    setCenter(new MySquadTab(squad, null, null));
+    setCenter(new MySquadTab(squad, null, null, true));
 
     // Only offered against a real, logged-in FPL account - there's nothing to submit a transfer to
     // otherwise (stub mode, or mySquad not yet loaded). Matches TransfersTab's own "Make this

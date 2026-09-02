@@ -16,8 +16,8 @@ import java.util.stream.Collectors;
 // Picks a legal starting XI (and the resulting bench) out of a 15-man squad that otherwise has no
 // such split - e.g. KillerTeamFinder's from-scratch dream team. For now this is deliberately
 // simple: among the formations FPL allows (1 GK, 3-5 DEF, 2-5 MID, 1-3 FWD, 11 total), pick
-// whichever fields the highest-scoring players; ties go to the cheaper eleven, and a genuine tie
-// (same score, same cost) is settled at random. More nuanced picks (bench order, auto-subs,
+// whichever fields the highest-points players; ties go to the cheaper eleven, and a genuine tie
+// (same points, same cost) is settled at random. More nuanced picks (bench order, auto-subs,
 // captaincy) are a planned follow-up.
 public final class StartingElevenSelector {
 
@@ -51,10 +51,10 @@ public final class StartingElevenSelector {
     final Map<Position, List<Player>> byPosition = squad.stream().collect(Collectors.groupingBy(Player::getPosition));
 
     final Random random = new Random();
-    final List<Player> goalkeepers = rankedByScore(byPosition.getOrDefault(Position.GOALKEEPER, List.of()), random);
-    final List<Player> defenders = rankedByScore(byPosition.getOrDefault(Position.DEFENDER, List.of()), random);
-    final List<Player> midfielders = rankedByScore(byPosition.getOrDefault(Position.MIDFIELDER, List.of()), random);
-    final List<Player> forwards = rankedByScore(byPosition.getOrDefault(Position.FORWARD, List.of()), random);
+    final List<Player> goalkeepers = rankedByPoints(byPosition.getOrDefault(Position.GOALKEEPER, List.of()), random);
+    final List<Player> defenders = rankedByPoints(byPosition.getOrDefault(Position.DEFENDER, List.of()), random);
+    final List<Player> midfielders = rankedByPoints(byPosition.getOrDefault(Position.MIDFIELDER, List.of()), random);
+    final List<Player> forwards = rankedByPoints(byPosition.getOrDefault(Position.FORWARD, List.of()), random);
 
     final Formation formation = bestFormation(defenders, midfielders, forwards, random);
 
@@ -131,18 +131,18 @@ public final class StartingElevenSelector {
     return best;
   }
 
-  // Same metric PlayerLine/Strategy.SCORE use everywhere else (points weighted by any double-
+  // Same metric PlayerLine/Strategy.POINTS use everywhere else (points weighted by any double-
   // fixture multiplier) - not just raw points - so a formation search here agrees with how the
-  // 15-man squad itself was scored when picked.
-  private static int effectiveScore(final Player player) {
+  // 15-man squad itself was ranked when picked.
+  private static int effectivePoints(final Player player) {
 
     return player.getPoints() * Controls.getFixtureMultiplier(player.getTeam());
   }
 
-  private static List<Player> rankedByScore(final List<Player> players, final Random random) {
+  private static List<Player> rankedByPoints(final List<Player> players, final Random random) {
 
     final List<Player> ranked = new ArrayList<>(players);
-    ranked.sort(Comparator.comparingInt(StartingElevenSelector::effectiveScore).reversed()
+    ranked.sort(Comparator.comparingInt(StartingElevenSelector::effectivePoints).reversed()
         .thenComparing(Player::getCostNow));
     shuffleTiedGroups(ranked, random);
 
@@ -169,7 +169,7 @@ public final class StartingElevenSelector {
 
   private static boolean isTied(final Player first, final Player second) {
 
-    return effectiveScore(first) == effectiveScore(second)
+    return effectivePoints(first) == effectivePoints(second)
         && first.getCostNow().compareTo(second.getCostNow()) == 0;
   }
 
@@ -177,7 +177,7 @@ public final class StartingElevenSelector {
 
     final int[] prefix = new int[ranked.size() + 1];
     for (int i = 0; i < ranked.size(); i++) {
-      prefix[i + 1] = prefix[i] + effectiveScore(ranked.get(i));
+      prefix[i + 1] = prefix[i] + effectivePoints(ranked.get(i));
     }
 
     return prefix;

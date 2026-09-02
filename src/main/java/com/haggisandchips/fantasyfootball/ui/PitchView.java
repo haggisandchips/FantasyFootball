@@ -308,17 +308,18 @@ class PitchView extends Region {
     // MIDFIELDER split the space between them into three equal gaps, so spacing stays even and
     // FORWARD can never overlap MIDFIELDER regardless of how tall the region actually is.
     final double goalkeeperY = offsetY + height * GOALKEEPER_Y_FRACTION;
-    // On the pitch, PitchPlayer renders a third line (next fixture) below the cost/points line -
-    // cardHeight (shared with cardWidth via cardPadding()) only budgets for shirt + name + one detail
-    // line, so reserve one more line's worth of height (its font size plus the card's own
-    // inter-label spacing) on top of that, or the fixture line would sit under/into the halfway line
-    // for the forward row specifically (the one row anchored to it).
-    final double fixtureLineHeight = PitchPlayer.detailFontSize(shirtSize) + PitchPlayer.labelSpacing(shirtSize);
+    // On the pitch, PitchPlayer renders two more lines (form/points-per-game, then next fixture)
+    // below the cost/points line - cardHeight (shared with cardWidth via cardPadding()) only budgets
+    // for shirt + name + one detail line, so reserve two more lines' worth of height (each one's font
+    // size plus the card's own inter-label spacing) on top of that, or the extra lines would sit
+    // under/into the halfway line for the forward row specifically (the one row anchored to it).
+    final double extraLineHeight = PitchPlayer.detailFontSize(shirtSize) + PitchPlayer.labelSpacing(shirtSize);
+    final double extraLinesHeight = 2 * extraLineHeight;
     // Leaves a little breathing room between the forward row and the halfway line, so the fixture
     // line underneath the shirt doesn't sit right on top of it - half that line's own height, plus a
     // proportional (not fixed - see cardPadding()'s own comment for why) sliver more, is enough.
     final double forwardBottomGap = PitchPlayer.detailFontSize(shirtSize) / 2.0 + shirtSize * 0.05;
-    final double forwardY = halfwayLineY - cardHeight - fixtureLineHeight - forwardBottomGap;
+    final double forwardY = halfwayLineY - cardHeight - extraLinesHeight - forwardBottomGap;
     final double rowGap = (forwardY - goalkeeperY) / 3.0;
 
     final double[] rowY = { goalkeeperY, goalkeeperY + rowGap, goalkeeperY + 2 * rowGap, forwardY };
@@ -339,7 +340,7 @@ class PitchView extends Region {
 
   // A real card's rendered height (line-height beyond raw font point size, each Label's own default
   // padding) runs noticeably taller than this class's own geometric estimate of it (cardHeight +
-  // fixtureLineHeight, both built purely from font-size numbers) - comfortably positive margins on
+  // extraLinesHeight, both built purely from font-size numbers) - comfortably positive margins on
   // that estimate alone still produced visible overlap in practice (a MIDFIELDER row's shirt resting
   // on the DEFENDER row's captain badge/fixture line above it). ROW_HEIGHT_SAFETY_FACTOR pads the
   // estimate rather than trying to model that overhead precisely, and shrinking shirtSize (rather
@@ -358,13 +359,14 @@ class PitchView extends Region {
 
     for (double candidate = widthBasedShirtSize; candidate > PitchPlayer.MIN_SHIRT_SIZE; candidate -= 1) {
       final double cardHeight = candidate + PitchPlayer.cardPadding(candidate);
-      final double fixtureLineHeight = PitchPlayer.detailFontSize(candidate) + PitchPlayer.labelSpacing(candidate);
+      final double extraLinesHeight =
+          2 * (PitchPlayer.detailFontSize(candidate) + PitchPlayer.labelSpacing(candidate));
       final double forwardBottomGap = PitchPlayer.detailFontSize(candidate) / 2.0 + candidate * 0.05;
 
-      final double forwardY = halfwayLineY - cardHeight - fixtureLineHeight - forwardBottomGap;
+      final double forwardY = halfwayLineY - cardHeight - extraLinesHeight - forwardBottomGap;
       final double rowGap = (forwardY - goalkeeperY) / 3.0;
 
-      if (rowGap >= (cardHeight + fixtureLineHeight) * ROW_HEIGHT_SAFETY_FACTOR) {
+      if (rowGap >= (cardHeight + extraLinesHeight) * ROW_HEIGHT_SAFETY_FACTOR) {
         return candidate;
       }
     }

@@ -72,7 +72,7 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
   private static Comparator<TransferSuggestion> transferSuggestionComparator(final Strategy strategy) {
 
     // The whole chain is flipped by the trailing reversed() (so higher-is-better unavailablePlayersOut
-    // and strategy score sort first) - the cost term is therefore built descending here too, so that
+    // and strategy stat sort first) - the cost term is therefore built descending here too, so that
     // after the flip it reads as ascending: on a tie, the cheaper team sorts first.
     return Comparator
         .comparingInt(TransferSuggestion::getUnavailablePlayersOut)
@@ -95,14 +95,16 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
 
   @Override
   public List<TransferSuggestion> calculateTransferSuggestions(
-      final Squad mySquad, final List<Player> allPlayers, final TransferSearchProgressListener progressListener) {
+      final Squad mySquad, final List<Player> allPlayers, final Strategy strategy,
+      final TransferSearchProgressListener progressListener) {
 
     if (mySquad.getFreeTransfers() <= 0 && Controls.FREE_TRANSFERS_OVERRIDE <= 0) {
       return List.of();
     }
 
     final Map<Position, List<Player>> availablePlayers = groupAvailablePlayers(allPlayers);
-    return TransferSelector.getTransferSuggestions(mySquad, copyAvailablePlayers(availablePlayers), progressListener);
+    return TransferSelector.getTransferSuggestions(
+        mySquad, copyAvailablePlayers(availablePlayers), strategy, progressListener);
   }
 
   @Override
@@ -131,7 +133,7 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
     final Map<Position, List<Player>> availablePlayers = groupAvailablePlayers(allPlayers);
     return KillerTeamFinder.find(
         strategy,
-        TeamSelector.buildPermutations(strategy, copyAvailablePlayers(availablePlayers), minimumThresholds),
+        TeamSelector.buildCombinations(strategy, copyAvailablePlayers(availablePlayers), minimumThresholds),
         maxBudget, progressListener);
   }
 

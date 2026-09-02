@@ -27,13 +27,13 @@ public final class KillerTeamFinder {
 
   public static Team find(
       final Strategy strategy,
-      final Map<Position, Map<Integer, Set<PlayerLine>>> permutations,
+      final Map<Position, Map<BigDecimal, Set<PlayerLine>>> combinations,
       final BigDecimal maxBudget,
       final KillerTeamSearchProgressListener progressListener) {
 
     log.debug(String.format("Calculating Killer Team by %s", strategy.name()));
 
-    final long totalCombinations = countCandidateTeams(permutations);
+    final long totalCombinations = countCandidateTeams(combinations);
     log.info("Calculating killer team ({}) - {} candidate combination(s) to evaluate", strategy, totalCombinations);
     progressListener.onProgress(strategy, 0, totalCombinations);
 
@@ -45,33 +45,33 @@ public final class KillerTeamFinder {
 
     Team killerTeam = null;
 
-    for (final Set<PlayerLine> goalkeeperLines : permutations.get(Position.GOALKEEPER).values()) {
+    for (final Set<PlayerLine> goalkeeperLines : combinations.get(Position.GOALKEEPER).values()) {
       int gg = 0;
       for (PlayerLine goalkeeperLine : goalkeeperLines) {
-        if (++gg > Controls.MAX_PERMUTATIONS_PER_SCORE) {
+        if (++gg > Controls.MAX_COMBINATIONS_PER_BUCKET) {
           break;
         }
 
-        for (final Set<PlayerLine> defenderLines : permutations.get(Position.DEFENDER).values()) {
+        for (final Set<PlayerLine> defenderLines : combinations.get(Position.DEFENDER).values()) {
           int dd = 0;
           for (PlayerLine defenderLine : defenderLines) {
-            if (++dd > Controls.MAX_PERMUTATIONS_PER_SCORE) {
+            if (++dd > Controls.MAX_COMBINATIONS_PER_BUCKET) {
               break;
             }
 
             for (final Set<PlayerLine> midfielderLines :
-                permutations.get(Position.MIDFIELDER).values()) {
+                combinations.get(Position.MIDFIELDER).values()) {
               int mm = 0;
               for (PlayerLine midfielderLine : midfielderLines) {
-                if (++mm > Controls.MAX_PERMUTATIONS_PER_SCORE) {
+                if (++mm > Controls.MAX_COMBINATIONS_PER_BUCKET) {
                   break;
                 }
 
                 for (final Set<PlayerLine> forwardLines :
-                    permutations.get(Position.FORWARD).values()) {
+                    combinations.get(Position.FORWARD).values()) {
                   int ff = 0;
                   for (PlayerLine forwardLine : forwardLines) {
-                    if (++ff > Controls.MAX_PERMUTATIONS_PER_SCORE) {
+                    if (++ff > Controls.MAX_COMBINATIONS_PER_BUCKET) {
                       break;
                     }
 
@@ -129,17 +129,18 @@ public final class KillerTeamFinder {
 
   // Exactly how many candidate teams find() will build: the product, across the four positions, of
   // how many player-lines that position contributes - each position's own count is summed across
-  // its score buckets, each bucket capped at MAX_PERMUTATIONS_PER_SCORE exactly like the nested
-  // loops above, so this matches the real iteration count precisely (not just an estimate). Public
-  // so KillerTeamTab can show the same number live, from the same permutations a real search would
-  // use, rather than a cheaper but inexact approximation that can drift from what actually happens.
-  public static long countCandidateTeams(final Map<Position, Map<Integer, Set<PlayerLine>>> permutations) {
+  // its Strategy.lineStat buckets, each bucket capped at MAX_COMBINATIONS_PER_BUCKET exactly like
+  // the nested loops above, so this matches the real iteration count precisely (not just an
+  // estimate). Public so KillerTeamTab can show the same number live, from the same combinations a
+  // real search would use, rather than a cheaper but inexact approximation that can drift from what
+  // actually happens.
+  public static long countCandidateTeams(final Map<Position, Map<BigDecimal, Set<PlayerLine>>> combinations) {
 
     long total = 1;
     for (final Position position : Position.values()) {
       long positionCount = 0;
-      for (final Set<PlayerLine> lines : permutations.get(position).values()) {
-        positionCount += Math.min(lines.size(), Controls.MAX_PERMUTATIONS_PER_SCORE);
+      for (final Set<PlayerLine> lines : combinations.get(position).values()) {
+        positionCount += Math.min(lines.size(), Controls.MAX_COMBINATIONS_PER_BUCKET);
       }
       total *= positionCount;
     }
