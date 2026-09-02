@@ -23,7 +23,7 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.Spinner;
-import javafx.scene.control.SpinnerValueFactory.DoubleSpinnerValueFactory;
+import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TextFormatter;
 import javafx.scene.layout.BorderPane;
@@ -43,8 +43,10 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableSet;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.BiConsumer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -226,7 +228,7 @@ class KillerTeamTab extends BorderPane {
       spinner.setDisable(true);
       spinner.setEditable(true);
 
-      final DoubleSpinnerValueFactory valueFactory = new DoubleSpinnerValueFactory(0, 999, 0, 0.1);
+      final ThresholdValueFactory valueFactory = new ThresholdValueFactory();
       valueFactory.setConverter(new StringConverter<>() {
         @Override
         public String toString(final Double value) {
@@ -243,6 +245,7 @@ class KillerTeamTab extends BorderPane {
           }
         }
       });
+      valueFactory.setValue(0.0);
       spinner.setValueFactory(valueFactory);
 
       // Mouse-scrollable, not just click-the-arrows or type - the same step the arrows use.
@@ -388,13 +391,18 @@ class KillerTeamTab extends BorderPane {
   }
 
   // Swaps the 4 spinners' displayed values (and live counts/combinations) to the currently selected
-  // strategy's own thresholds - called on init() and whenever the strategy dropdown changes.
+  // strategy's own thresholds - called on init() and whenever the strategy dropdown changes. Also
+  // refreshes each spinner's own set of steppable values (see refreshThresholdPools()) since a
+  // different strategy means a different underlying stat, and therefore a different set of values
+  // that arrow-clicking/scrolling should land on.
   private void displayThresholdsForCurrentStrategy() {
 
     final Map<Position, Double> activeThresholds = thresholdsByStrategy.get(strategyDropdown.getValue());
     if (activeThresholds == null) {
       return;
     }
+
+    refreshThresholdPools();
 
     suppressThresholdTriggers = true;
     try {
@@ -406,6 +414,23 @@ class KillerTeamTab extends BorderPane {
     }
 
     refreshCombinationsEstimate();
+  }
+
+  // Points each position's spinner at the set of distinct stat values actually held by players
+  // currently meeting Status.AVAILABLE for the strategy now selected (plus 0, so a spinner can always
+  // be stepped all the way down to "no filter") - see ThresholdValueFactory. Without this, an
+  // increment/decrement would use the previous strategy's stat distribution, which for a different
+  // stat is generally not a set of values any player actually has, so a click could easily land
+  // between two values that admit exactly the same players and look like it did nothing.
+  private void refreshThresholdPools() {
+
+    final Strategy strategy = strategyDropdown.getValue();
+    for (final Position position : Position.values()) {
+      final List<Double> statValues = availablePlayersByPosition.getOrDefault(position, List.of()).stream()
+          .map(strategy.getPlayerStat())
+          .toList();
+      ((ThresholdValueFactory) thresholdSpinners.get(position).getValueFactory()).setPool(statValues);
+    }
   }
 
   private long countMeetingThreshold(final Position position, final double threshold) {
@@ -798,5 +823,60 @@ class KillerTeamTab extends BorderPane {
   // for minimumThresholds compares Map content) mean an equal result, so any input that changes the
   // search must live here. Add fields for future inputs rather than caching by these three alone.
   private record KillerTeamCacheKey(Strategy strategy, BigDecimal maxBudget, Map<Position, Double> minimumThresholds) {
+  }
+
+  // A threshold spinner's value factory doesn't step by a fixed amount - instead each
+  // increment()/decrement() (arrow click or scroll - see buildThresholdSpinners()) jumps to the next
+  // distinct stat value actually held by a player in the current pool (see setPool(), refreshed by
+  // refreshThresholdPools() whenever the strategy or player pool changes), so a single click is
+  // guaranteed to change who meets the threshold rather than landing between two values that admit
+  // exactly the same players. 0 is always included as the floor, so decrementing can always reach "no
+  // filter" even if no player's own stat happens to be exactly 0.
+  private static final class ThresholdValueFactory extends SpinnerValueFactory<Double> {
+
+    private NavigableSet<Double> sortedDistinctValues = new TreeSet<>();
+
+    void setPool(final List<Double> statValues) {
+
+      final NavigableSet<Double> pool = new TreeSet<>(statValues);
+      pool.add(0.0);
+      sortedDistinctValues = pool;
+    }
+
+    @Override
+    public void increment(final int steps) {
+
+      double value = getValue() == null ? 0 : getValue();
+      for (int i = 0; i < steps; i++) {
+        value = nextValue(value, true);
+      }
+      setValue(value);
+    }
+
+    @Override
+    public void decrement(final int steps) {
+
+      double value = getValue() == null ? 0 : getValue();
+      for (int i = 0; i < steps; i++) {
+        value = nextValue(value, false);
+      }
+      setValue(value);
+    }
+
+    // The nearest pool value strictly above/below the given one, clamped to the pool's own extremes
+    // (rather than going out of range) once there's nowhere further to step.
+    private double nextValue(final double from, final boolean up) {
+
+      if (sortedDistinctValues.isEmpty()) {
+        return from;
+      }
+
+      final Double neighbor = up ? sortedDistinctValues.higher(from) : sortedDistinctValues.lower(from);
+      if (neighbor != null) {
+        return neighbor;
+      }
+
+      return up ? sortedDistinctValues.last() : sortedDistinctValues.first();
+    }
   }
 }
