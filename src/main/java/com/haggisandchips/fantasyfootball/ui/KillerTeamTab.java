@@ -28,6 +28,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.TextFormatter;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.util.StringConverter;
@@ -72,6 +73,10 @@ class KillerTeamTab extends BorderPane {
   private static final Pattern BUDGET_PATTERN = Pattern.compile("\\d{0,3}(\\.\\d{0,1})?");
 
   private static final DecimalFormat THRESHOLD_FORMAT = new DecimalFormat("0.##");
+
+  // Shared pref width for every row label in the left-hand controls panel (see controlRow()), so a
+  // short label like "GK min:" and a long one like "Strategy:" still leave their controls aligned.
+  private static final double CONTROL_LABEL_WIDTH = 70;
 
   private final ComboBox<Strategy> strategyDropdown = new ComboBox<>(FXCollections.observableArrayList(Strategy.values()));
 
@@ -171,20 +176,42 @@ class KillerTeamTab extends BorderPane {
 
     combinationsLabel.getStyleClass().add("card-detail");
 
-    // One row, vertically centred (Pos.CENTER_LEFT centres vertically, aligns left horizontally) -
-    // the per-position threshold boxes are taller than the other controls (label + spinner + count
-    // label stacked), so centring here is what keeps everything's midline level rather than
-    // top-aligned against the tallest child.
-    final HBox controls = new HBox(12);
-    controls.setAlignment(Pos.CENTER_LEFT);
-    controls.getChildren().addAll(new Label("Strategy:"), strategyDropdown);
-    controls.getChildren().addAll(new Label("Budget: £"), budgetField, new Label("m"));
+    // A vertical panel down the left rather than a row across the top, so the pitch itself (shown in
+    // the centre once a result comes in) keeps the full height of the screen. Every row keeps its
+    // label to the left of its control (rather than stacked above it) with a shared label width so
+    // they line up, and the panel is wide enough that no row wraps.
+    strategyDropdown.setMaxWidth(Double.MAX_VALUE);
+    HBox.setHgrow(strategyDropdown, Priority.ALWAYS);
+    calculateButton.setMaxWidth(Double.MAX_VALUE);
+
+    final HBox strategyBox = controlRow("Strategy:", strategyDropdown);
+
+    final HBox budgetBox = controlRow("Budget:", new HBox(4, new Label("£"), budgetField, new Label("m")));
+
+    final VBox controls = new VBox(16);
+    controls.setAlignment(Pos.TOP_LEFT);
+    controls.setPrefWidth(260);
+    controls.setMinWidth(260);
+    controls.getChildren().add(strategyBox);
+    controls.getChildren().add(budgetBox);
     controls.getChildren().addAll(buildThresholdSpinners());
     controls.getChildren().addAll(combinationsLabel, calculateButton);
-    controls.setPadding(new Insets(16, 20, 0, 20));
+    controls.setPadding(new Insets(20, 16, 20, 20));
 
-    setTop(controls);
+    setLeft(controls);
     setCenter(new StackPane(statusLabel));
+  }
+
+  // A label of a shared fixed width followed by its control, so every row's control lines up under
+  // the one above/below it regardless of how long that row's own label text is.
+  private static HBox controlRow(final String labelText, final javafx.scene.Node control) {
+
+    final Label label = new Label(labelText);
+    label.setPrefWidth(CONTROL_LABEL_WIDTH);
+
+    final HBox row = new HBox(8, label, control);
+    row.setAlignment(Pos.CENTER_LEFT);
+    return row;
   }
 
   private VBox[] buildThresholdSpinners() {
@@ -262,7 +289,12 @@ class KillerTeamTab extends BorderPane {
       thresholdSpinners.put(position, spinner);
       thresholdCountLabels.put(position, countLabel);
 
-      final VBox box = new VBox(2, new Label(position.getAbbreviation() + " min:"), spinner, countLabel);
+      final HBox spinnerRow = controlRow(position.getAbbreviation() + " min:", spinner);
+
+      // Indented to sit under the spinner itself, not under its label to the left of it.
+      VBox.setMargin(countLabel, new Insets(0, 0, 0, CONTROL_LABEL_WIDTH + 8));
+
+      final VBox box = new VBox(2, spinnerRow, countLabel);
       box.setAlignment(Pos.CENTER_LEFT);
       boxes[i] = box;
     }
@@ -607,12 +639,22 @@ class KillerTeamTab extends BorderPane {
     // teamAnalysisService/onTransferExecuted are never touched here - this squad's own
     // TransferContext is always null (see Squad above), so MySquadTab never shows its
     // substitution button for it.
-    setCenter(new MySquadTab(squad, null, null, true));
+    final MySquadTab pitch = new MySquadTab(squad, null, null, true);
+
+    // Nested in its own BorderPane, rather than this tab's own setBottom(), so the bar centres over
+    // the pitch itself (this tab's centre region) rather than the full window width, which would
+    // otherwise also span the controls panel over on the left (see setLeft() above).
+    final BorderPane resultPane = new BorderPane(pitch);
 
     // Only offered against a real, logged-in FPL account - there's nothing to submit a transfer to
     // otherwise (stub mode, or mySquad not yet loaded). Matches TransfersTab's own "Make this
     // transfer" button, which is hidden the same way.
-    setBottom(mySquad != null && mySquad.getTransferContext() != null ? useThisTeamBar(team) : null);
+    if (mySquad != null && mySquad.getTransferContext() != null) {
+      resultPane.setBottom(useThisTeamBar(team));
+    }
+
+    setCenter(resultPane);
+    setBottom(null);
   }
 
   void showError(final String message) {
