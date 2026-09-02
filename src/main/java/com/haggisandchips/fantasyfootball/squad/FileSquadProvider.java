@@ -43,7 +43,7 @@ public class FileSquadProvider implements SquadProvider {
     if (!squadFile.exists()) {
       log.warn("{} not found - returning an empty squad. Copy my-squad.example.json to {} to test transfer suggestions with your own team.",
           squadFilePath, squadFilePath);
-      return new Squad(BigDecimal.ZERO, BigDecimal.ZERO, 0, false, new Team(List.of()), List.of(), List.of(), null, null, null, null, null);
+      return new Squad(BigDecimal.ZERO, BigDecimal.ZERO, 0, false, new Team(List.of(), false), List.of(), List.of(), null, null, null, null, null);
     }
 
     final MySquadConfig config = objectMapper.readValue(squadFile, MySquadConfig.class);
@@ -61,12 +61,13 @@ public class FileSquadProvider implements SquadProvider {
     final Map<Position, List<Player>> squadByPosition =
         squadPlayers.stream().collect(Collectors.groupingBy(Player::getPosition));
 
+    // Always built fixture-unaware - see AuthenticatedSquadProvider's own comment on this.
     final List<PlayerLine> playerLines = new ArrayList<>();
     for (final Position position : Position.values()) {
-      playerLines.add(new PlayerLine(position, squadByPosition.getOrDefault(position, List.of())));
+      playerLines.add(new PlayerLine(position, squadByPosition.getOrDefault(position, List.of()), false));
     }
 
-    final Team myTeam = new Team(playerLines);
+    final Team myTeam = new Team(playerLines, false);
     final BigDecimal squadValue =
         squadPlayers.stream().map(Player::getCostNow).reduce(BigDecimal.ZERO, BigDecimal::add);
 

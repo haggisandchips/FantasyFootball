@@ -42,7 +42,7 @@ public class TransferSuggestion {
     }
 
     return String.format(
-        "Transfer Suggestion (Points=%d, Cost Now=%.1f) [Out: %s, In: %s, Unavailable Players Replaced: %d]",
+        "Transfer Suggestion (Points=%.1f, Cost Now=%.1f) [Out: %s, In: %s, Unavailable Players Replaced: %d]",
         team.getPoints(), team.getCostNow(), out, in, unavailablePlayersOut);
   }
 }

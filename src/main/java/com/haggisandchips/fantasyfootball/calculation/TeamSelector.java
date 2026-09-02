@@ -24,7 +24,7 @@ public class TeamSelector {
 
   public static Map<Position, Map<BigDecimal, Set<PlayerLine>>> buildCombinations(
       final Strategy strategyOption, final Map<Position, List<Player>> players,
-      final Map<Position, Double> minimumThresholds) {
+      final Map<Position, Double> minimumThresholds, final boolean considerFixtures) {
     final Map<Position, Map<BigDecimal, Set<PlayerLine>>> combinations =
         new TreeMap<>();
 
@@ -66,7 +66,7 @@ public class TeamSelector {
       while (generator.hasMore()) {
         final List<Player> tempPlayers = generator.getNext();
 
-        final PlayerLine playerLine = new PlayerLine(position, tempPlayers);
+        final PlayerLine playerLine = new PlayerLine(position, tempPlayers, considerFixtures);
         final BigDecimal statValue = strategyOption.getLineStat().apply(playerLine);
 
         final Set<PlayerLine> statLines = playerLines.computeIfAbsent(statValue, key -> new TreeSet<>());
@@ -119,7 +119,7 @@ public class TeamSelector {
   // single PlayerLine.
   public static long countCappedCombinations(
       final Strategy strategyOption, final Map<Position, List<Player>> players,
-      final Map<Position, Double> minimumThresholds) {
+      final Map<Position, Double> minimumThresholds, final boolean considerFixtures) {
 
     long total = 1;
     for (final Position position : Position.values()) {
@@ -129,7 +129,8 @@ public class TeamSelector {
           .filter(player -> strategyOption.getPlayerStat().apply(player) >= threshold)
           .toList();
 
-      total *= countCappedSubsets(strategyOption, filtered, position.getNumber(), Controls.MAX_COMBINATIONS_PER_BUCKET);
+      total *= countCappedSubsets(
+          strategyOption, filtered, position.getNumber(), Controls.MAX_COMBINATIONS_PER_BUCKET, considerFixtures);
     }
 
     return total;
@@ -145,7 +146,8 @@ public class TeamSelector {
   // treated as the same bucket, matching buildCombinations' own TreeMap (whose ordering, unlike a
   // HashMap's equals/hashCode, already treats them as equal).
   private static long countCappedSubsets(
-      final Strategy strategyOption, final List<Player> pool, final int r, final int cap) {
+      final Strategy strategyOption, final List<Player> pool, final int r, final int cap,
+      final boolean considerFixtures) {
 
     final List<Map<BigDecimal, Long>> ways = new ArrayList<>(r + 1);
     for (int k = 0; k <= r; k++) {
@@ -154,7 +156,12 @@ public class TeamSelector {
     ways.get(0).put(BigDecimal.ZERO, 1L);
 
     for (final Player player : pool) {
-      final BigDecimal value = strategyOption.getWeightedPlayerStat().apply(player);
+      // considerFixtures=false's PlayerLine multiplies every player's stat by exactly 1.0 (see
+      // PlayerLine's own constructor) - playerStat already *is* that raw, unweighted value, so it's
+      // reused here rather than needing its own considerFixtures-aware Strategy field.
+      final BigDecimal value = considerFixtures
+          ? strategyOption.getWeightedPlayerStat().apply(player)
+          : BigDecimal.valueOf(strategyOption.getPlayerStat().apply(player));
 
       for (int k = r; k >= 1; k--) {
         for (final Map.Entry<BigDecimal, Long> entry : ways.get(k - 1).entrySet()) {

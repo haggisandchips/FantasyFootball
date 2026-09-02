@@ -16,6 +16,7 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
@@ -54,6 +55,12 @@ class TransfersTab extends ScrollPane {
 
   private final ComboBox<Strategy> strategyDropdown = new ComboBox<>(FXCollections.observableArrayList(Strategy.values()));
 
+  // Off by default - a transfer is a longer-term decision than any one gameweek's fixtures, so
+  // candidates are judged purely on season-to-date stats unless the user opts into fixture
+  // count/difficulty mattering too (e.g. planning a Free Hit into a run of favourable fixtures - see
+  // TeamAnalysisService.calculateTransferSuggestions).
+  private final CheckBox considerFixturesCheckBox = new CheckBox("Consider fixtures");
+
   // Rebuilt (not just its children replaced) on every strategy switch, alongside suggestionsBox.
   private final VBox transferSection = new VBox(16);
 
@@ -61,10 +68,11 @@ class TransfersTab extends ScrollPane {
 
   private final HBox header;
 
-  // Every strategy's search result calculated so far, already ranked/grouped by transfer count (see
-  // TeamAnalysisService.rankTransferSuggestions) - switching back to an already-seen strategy shows
-  // it instantly instead of re-running the expensive search.
-  private final Map<Strategy, Map<Integer, List<TransferSuggestion>>> cache = new HashMap<>();
+  // Every (strategy, considerFixtures) combination's search result calculated so far, already
+  // ranked/grouped by transfer count (see TeamAnalysisService.rankTransferSuggestions) - switching
+  // back to an already-seen combination shows it instantly instead of re-running the expensive
+  // search.
+  private final Map<TransfersKey, Map<Integer, List<TransferSuggestion>>> cache = new HashMap<>();
 
   private TeamAnalysisService teamAnalysisService;
 
@@ -83,10 +91,10 @@ class TransfersTab extends ScrollPane {
 
   private Map<Integer, List<TransferSuggestion>> suggestionsByCount;
 
-  // The strategy the user currently has selected - lets a task whose result arrives after the user
-  // has since switched to a different strategy recognise it's stale (still caches its result, just
-  // doesn't clobber what's now on screen with it).
-  private Strategy currentStrategy;
+  // The (strategy, considerFixtures) combination the user currently has selected - lets a task whose
+  // result arrives after the user has since switched to a different combination recognise it's stale
+  // (still caches its result, just doesn't clobber what's now on screen with it).
+  private TransfersKey currentKey;
 
   // The currently in-flight search, if any - see KillerTeamTab's own runningTask for why this
   // exists (starting a second search without cancelling this first would leave both running
@@ -100,9 +108,12 @@ class TransfersTab extends ScrollPane {
     strategyDropdown.setDisable(true);
     strategyDropdown.setOnAction(event -> triggerForCurrentSelection());
 
+    considerFixturesCheckBox.setDisable(true);
+    considerFixturesCheckBox.setOnAction(event -> triggerForCurrentSelection());
+
     suggestionsBox.setAlignment(Pos.CENTER);
 
-    header = new HBox(12, sectionLabel("Suggested Transfers"), strategyDropdown);
+    header = new HBox(12, sectionLabel("Suggested Transfers"), strategyDropdown, considerFixturesCheckBox);
     header.setAlignment(Pos.CENTER_LEFT);
 
     setFitToWidth(true);
@@ -130,22 +141,23 @@ class TransfersTab extends ScrollPane {
     this.onResult = onResult;
 
     strategyDropdown.setDisable(false);
+    considerFixturesCheckBox.setDisable(false);
     triggerForCurrentSelection();
   }
 
   private void triggerForCurrentSelection() {
 
-    final Strategy strategy = strategyDropdown.getValue();
-    currentStrategy = strategy;
+    final TransfersKey key = new TransfersKey(strategyDropdown.getValue(), considerFixturesCheckBox.isSelected());
+    currentKey = key;
 
-    if (cache.containsKey(strategy)) {
-      showResult(strategy);
+    if (cache.containsKey(key)) {
+      showResult(key);
     } else {
-      runCalculation(strategy);
+      runCalculation(key);
     }
   }
 
-  private void runCalculation(final Strategy strategy) {
+  private void runCalculation(final TransfersKey key) {
 
     cancelRunningTask();
 
@@ -159,7 +171,8 @@ class TransfersTab extends ScrollPane {
           updateProgress(evaluated, Math.max(total, 1));
         };
 
-        return teamAnalysisService.calculateTransferSuggestions(mySquad, allPlayers, strategy, progressListener);
+        return teamAnalysisService.calculateTransferSuggestions(
+            mySquad, allPlayers, key.strategy(), key.considerFixtures(), progressListener);
       }
     };
 
@@ -173,12 +186,12 @@ class TransfersTab extends ScrollPane {
       }
 
       final Map<Integer, List<TransferSuggestion>> ranked =
-          teamAnalysisService.rankTransferSuggestions(task.getValue(), strategy);
-      cache.put(strategy, ranked);
-      onResult.accept(strategy, ranked);
+          teamAnalysisService.rankTransferSuggestions(task.getValue(), key.strategy());
+      cache.put(key, ranked);
+      onResult.accept(key.strategy(), ranked);
 
-      if (strategy.equals(currentStrategy)) {
-        showResult(strategy);
+      if (key.equals(currentKey)) {
+        showResult(key);
       }
     });
 
@@ -187,7 +200,7 @@ class TransfersTab extends ScrollPane {
         runningTask = null;
       }
 
-      if (strategy.equals(currentStrategy)) {
+      if (key.equals(currentKey)) {
         showLoading(new Label("Failed to calculate transfer suggestions: "
             + FantasyFootballDesktopApp.describe(task.getException())));
       }
@@ -223,9 +236,9 @@ class TransfersTab extends ScrollPane {
     showLoading(new Label("Failed to load data: " + message));
   }
 
-  private void showResult(final Strategy strategy) {
+  private void showResult(final TransfersKey key) {
 
-    suggestionsByCount = new TreeMap<>(cache.get(strategy));
+    suggestionsByCount = new TreeMap<>(cache.get(key));
 
     refreshSuggestions(defaultTransferCount());
     transferSection.getChildren().setAll(transferCountToggle(), suggestionsBox);
@@ -269,7 +282,7 @@ class TransfersTab extends ScrollPane {
       final TransferSuggestion candidate, final int candidateCount,
       final TransferSuggestion current, final int currentCount) {
 
-    final int pointsCompare = Integer.compare(candidate.getTeam().getPoints(), current.getTeam().getPoints());
+    final int pointsCompare = Double.compare(candidate.getTeam().getPoints(), current.getTeam().getPoints());
     if (pointsCompare != 0) {
       return pointsCompare > 0;
     }
@@ -340,7 +353,7 @@ class TransfersTab extends ScrollPane {
     }
 
     final Label detailLabel = new Label(String.format(
-        "New team points: %d · New team cost: £%.1fm",
+        "New team points: %.1f · New team cost: £%.1fm",
         suggestion.getTeam().getPoints(), suggestion.getTeam().getCostNow()));
     detailLabel.getStyleClass().add("card-detail");
     detailLabel.setWrapText(true);
@@ -479,5 +492,10 @@ class TransfersTab extends ScrollPane {
     final Label label = new Label(text);
     label.getStyleClass().add("section-label");
     return label;
+  }
+
+  // Cache/staleness key for a transfer search - equal keys mean an equal result, so any input that
+  // changes the search (see TeamAnalysisService.calculateTransferSuggestions) must live here.
+  private record TransfersKey(Strategy strategy, boolean considerFixtures) {
   }
 }

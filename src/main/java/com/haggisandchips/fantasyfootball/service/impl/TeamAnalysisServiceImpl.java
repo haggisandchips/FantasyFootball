@@ -95,7 +95,7 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
 
   @Override
   public List<TransferSuggestion> calculateTransferSuggestions(
-      final Squad mySquad, final List<Player> allPlayers, final Strategy strategy,
+      final Squad mySquad, final List<Player> allPlayers, final Strategy strategy, final boolean considerFixtures,
       final TransferSearchProgressListener progressListener) {
 
     if (mySquad.getFreeTransfers() <= 0 && Controls.FREE_TRANSFERS_OVERRIDE <= 0) {
@@ -104,7 +104,7 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
 
     final Map<Position, List<Player>> availablePlayers = groupAvailablePlayers(allPlayers);
     return TransferSelector.getTransferSuggestions(
-        mySquad, copyAvailablePlayers(availablePlayers), strategy, progressListener);
+        mySquad, copyAvailablePlayers(availablePlayers), strategy, considerFixtures, progressListener);
   }
 
   @Override
@@ -128,13 +128,15 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
   @Override
   public Team calculateKillerTeam(
       final List<Player> allPlayers, final Strategy strategy, final BigDecimal maxBudget,
-      final Map<Position, Double> minimumThresholds, final KillerTeamSearchProgressListener progressListener) {
+      final Map<Position, Double> minimumThresholds, final boolean considerFixtures,
+      final KillerTeamSearchProgressListener progressListener) {
 
     final Map<Position, List<Player>> availablePlayers = groupAvailablePlayers(allPlayers);
     return KillerTeamFinder.find(
         strategy,
-        TeamSelector.buildCombinations(strategy, copyAvailablePlayers(availablePlayers), minimumThresholds),
-        maxBudget, progressListener);
+        TeamSelector.buildCombinations(
+            strategy, copyAvailablePlayers(availablePlayers), minimumThresholds, considerFixtures),
+        maxBudget, considerFixtures, progressListener);
   }
 
   @Override

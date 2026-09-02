@@ -1,17 +1,22 @@
 package com.haggisandchips.fantasyfootball.ui;
 
+import com.haggisandchips.fantasyfootball.Controls;
 import com.haggisandchips.fantasyfootball.domain.Fixture;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.Position;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.text.Text;
+import javafx.scene.text.TextAlignment;
+import javafx.scene.text.TextFlow;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 // A player rendered as their real club shirt (fetched from FPL's own CDN, keyed by team_code -
 // see Player.teamCode), their name, a cost/points line, a form/points-per-game line, and a fourth
@@ -77,31 +82,39 @@ final class PitchPlayer extends VBox {
 
   private final Label statsLabel;
 
-  private final Label fixtureLabel;
+  private final TextFlow fixtureLabel;
+
+  // Parallel to fixtureLabel's own children, in order - each entry is the colour that child's text
+  // was given (null for a segment that isn't colour-coded, e.g. the "; " separator between two
+  // fixtures, or "No fixture") - kept separately because Text has no getter back for a colour set
+  // via an inline style string, and setShirtSize needs to reapply it alongside the font size on
+  // every resize without clobbering it.
+  private final List<String> fixtureSegmentColors;
 
   private final List<Fixture> nextFixtures;
 
   static PitchPlayer of(final Player player) {
 
-    return new PitchPlayer(player, List.of(), null, false);
+    return new PitchPlayer(player, List.of(), null, false, false);
   }
 
   // Used by PitchView for the starting XI - badges/arrow carry the OptimalElevenSelector overlay
   // (see PitchView.captaincyBadges/arrowFor); an empty list/null arrow renders neither.
   static PitchPlayer of(final Player player, final List<CaptaincyBadge> badges, final Arrow arrow) {
 
-    return new PitchPlayer(player, badges, arrow, false);
+    return new PitchPlayer(player, badges, arrow, false, true);
   }
 
   // Substitutes aren't shown in a formation row, so their position isn't otherwise obvious -
   // shown as part of the detail line instead of a separate badge to keep the card compact.
   static PitchPlayer ofSubstitute(final Player player, final List<CaptaincyBadge> badges, final Arrow arrow) {
 
-    return new PitchPlayer(player, badges, arrow, true);
+    return new PitchPlayer(player, badges, arrow, true, true);
   }
 
   private PitchPlayer(
-      final Player player, final List<CaptaincyBadge> badges, final Arrow arrow, final boolean showPosition) {
+      final Player player, final List<CaptaincyBadge> badges, final Arrow arrow, final boolean showPosition,
+      final boolean showFixtureMultiplier) {
 
     // Loaded once at the highest size we'll ever display, then scaled down for display via
     // ImageView's fit properties (setShirtSize()) - backgroundLoading avoids blocking the JavaFX
@@ -159,8 +172,21 @@ final class PitchPlayer extends VBox {
     statsLabel.getStyleClass().add("player-detail");
 
     nextFixtures = player.getNextFixtures();
-    fixtureLabel = new Label(fixtureText(nextFixtures));
-    fixtureLabel.getStyleClass().add("player-fixture");
+
+    // Raw multiplier figure appended for the My Squad pitch only (see the showFixtureMultiplier
+    // factory overloads above) - lets the fixture-difficulty adjustment (Player.
+    // getFixtureDifficultyMultiplier, tuned via Controls.FIXTURE_DIFFICULTY_*) be eyeballed against
+    // real fixtures directly on the card, not just inferred from lineup/captaincy order.
+    final Double multiplier = showFixtureMultiplier && !nextFixtures.isEmpty()
+        ? player.getFixtureDifficultyMultiplier()
+        : null;
+    final FixtureDisplay fixtureDisplay = buildFixtureDisplay(nextFixtures, multiplier);
+    fixtureLabel = fixtureDisplay.flow();
+    fixtureSegmentColors = fixtureDisplay.segmentColors();
+    // Unlike the Labels above, a TextFlow doesn't shrink to its own content width - VBox's default
+    // fillWidth stretches it to the full card width, so without this its (left-aligned by default)
+    // text sits at the card's left edge instead of centred like every other line.
+    fixtureLabel.setTextAlignment(TextAlignment.CENTER);
 
     setAlignment(Pos.CENTER);
     getChildren().addAll(shirtPane, nameLabel, detailLabel, statsLabel, fixtureLabel);
@@ -168,24 +194,54 @@ final class PitchPlayer extends VBox {
     setShirtSize(MAX_SHIRT_SIZE);
   }
 
-  // "Opponent (H/A)" per fixture, "; "-separated for a double gameweek - no FDR number, since the
-  // card's own text colour already conveys the worst of however many fixtures there are (see
-  // worstDifficulty()) without needing the card any wider. A placeholder covers a team with no
-  // fixture at all (a blank gameweek) - see Player.nextFixtures.
-  private static String fixtureText(final List<Fixture> fixtures) {
-
-    if (fixtures.isEmpty()) {
-      return "No fixture";
-    }
-
-    return fixtures.stream()
-        .map(fixture -> String.format("%s (%s)", fixture.getOpponent(), fixture.isHome() ? "H" : "A"))
-        .collect(Collectors.joining("; "));
+  // fixtureLabel's built content, plus the colour (or null for an uncoloured segment, e.g. the
+  // "; " separator between two fixtures) each of its children was given, in the same order -
+  // returned together since setShirtSize needs both to reapply colour alongside font size on every
+  // resize (see fixtureSegmentColors' own comment).
+  private record FixtureDisplay(TextFlow flow, List<String> segmentColors) {
   }
 
-  private static int worstDifficulty(final List<Fixture> fixtures) {
+  // "Opponent (H/A)" per fixture, space-separated for a double gameweek (a semicolon read poorly in
+  // its default uncoloured black against the pitch), each individually coloured
+  // by its own FDR (not a single "worst of the group" colour for the whole line - two fixtures of
+  // genuinely different difficulty deserve genuinely different colours) - plus, when multiplier is
+  // non-null, the raw fixture-difficulty multiplier figure (see Player.getFixtureDifficultyMultiplier)
+  // appended as its own coloured segment. A placeholder covers a team with no fixture at all (a
+  // blank gameweek) - see Player.nextFixtures.
+  private static FixtureDisplay buildFixtureDisplay(final List<Fixture> fixtures, final Double multiplier) {
 
-    return fixtures.stream().mapToInt(Fixture::getDifficulty).max().orElseThrow();
+    final TextFlow flow = new TextFlow();
+    final List<String> colors = new ArrayList<>();
+
+    if (fixtures.isEmpty()) {
+      addSegment(flow, colors, "No fixture", null);
+      return new FixtureDisplay(flow, colors);
+    }
+
+    for (int i = 0; i < fixtures.size(); i++) {
+      if (i > 0) {
+        addSegment(flow, colors, " ", null);
+      }
+
+      final Fixture fixture = fixtures.get(i);
+      final String text = String.format("%s (%s)", fixture.getOpponent(), fixture.isHome() ? "H" : "A");
+      addSegment(flow, colors, text, difficultyColor(fixture.getDifficulty()));
+    }
+
+    if (multiplier != null) {
+      addSegment(flow, colors, String.format(" ×%.2f", multiplier), multiplierColor(multiplier, fixtures.size()));
+    }
+
+    return new FixtureDisplay(flow, colors);
+  }
+
+  private static void addSegment(
+      final TextFlow flow, final List<String> colors, final String text, final String color) {
+
+    final Text node = new Text(text);
+    node.getStyleClass().add("player-fixture");
+    flow.getChildren().add(node);
+    colors.add(color);
   }
 
   // FPL's own 1 (easiest, green) - 5 (hardest, red) fixture difficulty colour scale.
@@ -202,6 +258,30 @@ final class PitchPlayer extends VBox {
         return "#e67e22";
       default:
         return "#e74c3c";
+    }
+  }
+
+  // Same 5-colour scale as difficultyColor, but keyed to how favourable the fixture-difficulty
+  // multiplier is (high = green/favourable, low = red/unfavourable) rather than to a raw FDR
+  // number. Averaged per fixture first so a double gameweek's summed multiplier (which can run past
+  // 2.0 - see Player.getFixtureDifficultyMultiplier) lands on the same
+  // [FIXTURE_DIFFICULTY_MULTIPLIER_MIN, MAX] scale a single fixture's own multiplier does.
+  private static String multiplierColor(final double multiplier, final int fixtureCount) {
+
+    final double perFixture = multiplier / fixtureCount;
+    final double min = Controls.FIXTURE_DIFFICULTY_MULTIPLIER_MIN;
+    final double band = (Controls.FIXTURE_DIFFICULTY_MULTIPLIER_MAX - min) / 5;
+
+    if (perFixture < min + band) {
+      return "#e74c3c";
+    } else if (perFixture < min + 2 * band) {
+      return "#e67e22";
+    } else if (perFixture < min + 3 * band) {
+      return "#f1c40f";
+    } else if (perFixture < min + 4 * band) {
+      return "#8fce00";
+    } else {
+      return "#2ecc71";
     }
   }
 
@@ -224,14 +304,16 @@ final class PitchPlayer extends VBox {
     detailLabel.setStyle(String.format("-fx-font-size: %.0fpx;", detailFontSize(size)));
     statsLabel.setStyle(String.format("-fx-font-size: %.0fpx;", detailFontSize(size)));
 
-    // The single hardest (highest-numbered) fixture's colour, when there's more than one - the
-    // more cautious of the two rather than an average, since a bad one still risks a benching/
-    // low return regardless of how easy the other looks.
+    // Each fixture segment keeps its own colour (assigned once, in buildFixtureDisplay) - only the
+    // font size changes here, reapplied per child alongside that colour since Text has no getter
+    // back for a colour set via an inline style string (see fixtureSegmentColors).
     final String fixtureFontSize = String.format("-fx-font-size: %.0fpx;", detailFontSize(size));
-    final String fixtureFill = nextFixtures.isEmpty()
-        ? ""
-        : String.format(" -fx-text-fill: %s;", difficultyColor(worstDifficulty(nextFixtures)));
-    fixtureLabel.setStyle(fixtureFontSize + fixtureFill);
+    final List<Node> segments = fixtureLabel.getChildren();
+    for (int i = 0; i < segments.size(); i++) {
+      final String color = fixtureSegmentColors.get(i);
+      final String fill = color == null ? "" : String.format(" -fx-fill: %s;", color);
+      segments.get(i).setStyle(fixtureFontSize + fill);
+    }
   }
 
   // The cost/points line's font size at a given shirt size - exposed so PitchView can reserve

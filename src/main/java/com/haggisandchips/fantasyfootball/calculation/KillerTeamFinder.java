@@ -29,6 +29,7 @@ public final class KillerTeamFinder {
       final Strategy strategy,
       final Map<Position, Map<BigDecimal, Set<PlayerLine>>> combinations,
       final BigDecimal maxBudget,
+      final boolean considerFixtures,
       final KillerTeamSearchProgressListener progressListener) {
 
     log.debug(String.format("Calculating Killer Team by %s", strategy.name()));
@@ -101,7 +102,7 @@ public final class KillerTeamFinder {
                     playerLines.add(midfielderLine);
                     playerLines.add(forwardLine);
 
-                    final Team currentTeam = new Team(playerLines);
+                    final Team currentTeam = new Team(playerLines, considerFixtures);
                     if (isAffordable(maxBudget, currentTeam)) {
                       if (killerTeam == null
                           || isBetter(strategy, currentTeam, killerTeam)) {

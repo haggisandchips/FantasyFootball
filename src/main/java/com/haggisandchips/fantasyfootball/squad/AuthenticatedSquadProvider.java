@@ -91,12 +91,16 @@ public class AuthenticatedSquadProvider implements SquadProvider {
     final Map<Position, List<Player>> squadByPosition =
         squadPlayers.stream().collect(Collectors.groupingBy(Player::getPosition));
 
+    // Always built fixture-unaware - the baseline Team a Squad carries around (see Team's own
+    // considerFixtures field) never moves just because a Transfers/Killer Team toggle is flipped
+    // elsewhere. TransferSelector rebuilds a fixture-aware view of this on demand when the toggle
+    // asks for one (see Team.withFixtureConsideration).
     final List<PlayerLine> playerLines = new ArrayList<>();
     for (final Position position : Position.values()) {
-      playerLines.add(new PlayerLine(position, squadByPosition.getOrDefault(position, List.of())));
+      playerLines.add(new PlayerLine(position, squadByPosition.getOrDefault(position, List.of()), false));
     }
 
-    final Team team = new Team(playerLines);
+    final Team team = new Team(playerLines, false);
 
     final Transfers transfers = myTeam.getTransfers();
     final int freeTransfers = resolveFreeTransfers(transfers);

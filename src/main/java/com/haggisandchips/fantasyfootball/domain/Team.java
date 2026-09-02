@@ -14,17 +14,24 @@ public class Team implements Comparable<Team> {
 
   final BigDecimal costNow;
 
-  final int points;
+  final double points;
 
   final BigDecimal form;
 
   final BigDecimal pointsPerGame;
 
-  public Team(final List<PlayerLine> playerLines) {
+  // Whether this team's own PlayerLines were built weighting by fixture difficulty (see PlayerLine's
+  // own field of the same name) - stored so makeSubstitutions can keep rebuilding new PlayerLines
+  // consistently with however this team itself was built, without needing the flag threaded through
+  // every call site that substitutes players in and out (see TransferSelector).
+  final boolean considerFixtures;
+
+  public Team(final List<PlayerLine> playerLines, final boolean considerFixtures) {
     this.playerLines = playerLines;
+    this.considerFixtures = considerFixtures;
 
     BigDecimal costNow = new BigDecimal("0"), form = new BigDecimal("0"), pointsPerGame = new BigDecimal("0");
-    int points = 0;
+    double points = 0;
     for (final PlayerLine playerLine : playerLines) {
       costNow = costNow.add(playerLine.getCostNow());
       points += playerLine.getPoints();
@@ -55,10 +62,24 @@ public class Team implements Comparable<Team> {
         newPlayers.add(substitutions.getOrDefault(player, player));
       }
 
-      newPlayerLines.add(new PlayerLine(playerLine.getPosition(), newPlayers));
+      newPlayerLines.add(new PlayerLine(playerLine.getPosition(), newPlayers, considerFixtures));
     }
 
-    return new Team(newPlayerLines);
+    return new Team(newPlayerLines, considerFixtures);
+  }
+
+  // Rebuilds this team's PlayerLines from scratch under a different considerFixtures setting -
+  // SquadProvider implementations always load a squad's baseline Team fixture-unaware (so the My
+  // Squad tab's own totals never move just because a Transfers/Killer Team toggle is flipped
+  // elsewhere), so this is how TransferSelector gets a fixture-aware (or -unaware) view of that same
+  // squad to compare candidates against, on demand, per whatever the toggle currently says.
+  public Team withFixtureConsideration(final boolean considerFixtures) {
+    final List<PlayerLine> rebuilt = new ArrayList<>();
+    for (final PlayerLine playerLine : playerLines) {
+      rebuilt.add(new PlayerLine(playerLine.getPosition(), playerLine.getPlayers(), considerFixtures));
+    }
+
+    return new Team(rebuilt, considerFixtures);
   }
 
   public int compareTo(final Team other) {
@@ -66,7 +87,7 @@ public class Team implements Comparable<Team> {
   }
 
   public String toString() {
-    final StringBuilder builder = new StringBuilder(String.format("Team (Points=%d, Form=%.1f, Points per game=%.1f, Cost Now=%.1f, Team Average=%d) [\n", getPoints(), getForm(), getPointsPerGame(), getCostNow(), getPoints() * 11 / 15));
+    final StringBuilder builder = new StringBuilder(String.format("Team (Points=%.1f, Form=%.1f, Points per game=%.1f, Cost Now=%.1f, Team Average=%.1f) [\n", getPoints(), getForm(), getPointsPerGame(), getCostNow(), getPoints() * 11 / 15));
 
     boolean firstLine = true;
     for (PlayerLine playerLine : playerLines) {

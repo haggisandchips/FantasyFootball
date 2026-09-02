@@ -40,9 +40,12 @@ public final class TransferSelector {
 
   public static List<TransferSuggestion> getTransferSuggestions(
       final Squad mySquad, final Map<Position, List<Player>> availablePlayers, final Strategy strategy,
-      final TransferSearchProgressListener progressListener) {
+      final boolean considerFixtures, final TransferSearchProgressListener progressListener) {
 
-    final Team myTeam = mySquad.getTeam();
+    // mySquad.getTeam() is always the fixture-unaware baseline (see SquadProvider implementations) -
+    // rebuilt here per the toggle so myTeam and every candidate makeSubstitutions() builds from it
+    // (see below) are compared on the same footing, whichever way the toggle is set.
+    final Team myTeam = mySquad.getTeam().withFixtureConsideration(considerFixtures);
     final List<Player> myPlayers = myTeam.getPlayers();
 
     if (myPlayers.isEmpty()) {

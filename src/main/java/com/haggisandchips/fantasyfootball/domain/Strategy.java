@@ -15,17 +15,17 @@ public enum Strategy {
       Comparator.comparing(Team::getPoints),
       player -> (double) player.getPoints(),
       playerLine -> BigDecimal.valueOf(playerLine.getPoints()),
-      player -> BigDecimal.valueOf(player.getPoints() * player.getNextFixtures().size())),
+      player -> BigDecimal.valueOf(player.getPoints() * player.getFixtureDifficultyMultiplier())),
   FORM(
       Comparator.comparing(Team::getForm).thenComparing(Team::getPoints),
       player -> player.getForm().doubleValue(),
       PlayerLine::getForm,
-      player -> player.getForm().multiply(BigDecimal.valueOf(player.getNextFixtures().size()))),
+      player -> player.getForm().multiply(BigDecimal.valueOf(player.getFixtureDifficultyMultiplier()))),
   POINTS_PER_GAME(
       Comparator.comparing(Team::getPointsPerGame).thenComparing(Team::getPoints),
       player -> player.getPointsPerGame().doubleValue(),
       PlayerLine::getPointsPerGame,
-      player -> player.getPointsPerGame().multiply(BigDecimal.valueOf(player.getNextFixtures().size())));
+      player -> player.getPointsPerGame().multiply(BigDecimal.valueOf(player.getFixtureDifficultyMultiplier())));
 
   private final Comparator<Team> comparator;
 
@@ -35,15 +35,18 @@ public enum Strategy {
   private final Function<Player, Double> playerStat;
 
   // The per-combination aggregate this strategy buckets by - PlayerLine already sums points/form/
-  // points-per-game across its players (fixture-multiplier weighted), so this just picks out which
-  // of those sums TeamSelector.buildCombinations should group combinations by, so that a combination
-  // strong on the chosen stat is never discarded in favour of a merely cheaper one that happens to
-  // share the same total points (see PlayerLine.compareTo).
+  // points-per-game across its players (weighted however that particular PlayerLine was built - see
+  // its own considerFixtures), so this just picks out which of those sums
+  // TeamSelector.buildCombinations should group combinations by, so that a combination strong on the
+  // chosen stat is never discarded in favour of a merely cheaper one that happens to share the same
+  // total points (see PlayerLine.compareTo).
   private final Function<PlayerLine, BigDecimal> lineStat;
 
-  // The same per-player value lineStat's sum is built from (fixture-multiplier weighted) - lets
+  // The considerFixtures=true equivalent of the per-player value lineStat's sum is built from - lets
   // TeamSelector.countCappedCombinations estimate how many combinations land in each lineStat bucket
-  // without having to materialize a PlayerLine for every one of them.
+  // without having to materialize a PlayerLine for every one of them. Only valid for that case;
+  // TeamSelector falls back to playerStat itself (equivalent to a considerFixtures=false PlayerLine)
+  // when the toggle is off.
   private final Function<Player, BigDecimal> weightedPlayerStat;
 
   public int compare(final Team team1, final Team team2) {

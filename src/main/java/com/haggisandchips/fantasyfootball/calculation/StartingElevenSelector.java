@@ -81,9 +81,9 @@ public final class StartingElevenSelector {
       final List<Player> defenders, final List<Player> midfielders, final List<Player> forwards,
       final Random random) {
 
-    final int[] defenderPoints = prefixPoints(defenders);
-    final int[] midfielderPoints = prefixPoints(midfielders);
-    final int[] forwardPoints = prefixPoints(forwards);
+    final double[] defenderPoints = prefixPoints(defenders);
+    final double[] midfielderPoints = prefixPoints(midfielders);
+    final double[] forwardPoints = prefixPoints(forwards);
 
     final BigDecimal[] defenderCost = prefixCost(defenders);
     final BigDecimal[] midfielderCost = prefixCost(midfielders);
@@ -96,7 +96,7 @@ public final class StartingElevenSelector {
         Math.min(MIN_DEFENDERS, defenders.size()),
         Math.min(MIN_MIDFIELDERS, midfielders.size()),
         Math.min(MIN_FORWARDS, forwards.size()));
-    int bestPoints = -1;
+    double bestPoints = -1;
     BigDecimal bestCost = null;
 
     for (int def = MIN_DEFENDERS; def <= maxDefenders; def++) {
@@ -106,7 +106,7 @@ public final class StartingElevenSelector {
           continue;
         }
 
-        final int points = defenderPoints[def] + midfielderPoints[mid] + forwardPoints[fwd];
+        final double points = defenderPoints[def] + midfielderPoints[mid] + forwardPoints[fwd];
         final BigDecimal cost = defenderCost[def].add(midfielderCost[mid]).add(forwardCost[fwd]);
 
         final boolean better;
@@ -130,18 +130,20 @@ public final class StartingElevenSelector {
     return best;
   }
 
-  // Same metric PlayerLine/Strategy.POINTS use everywhere else (points weighted by any double-
-  // fixture multiplier) - not just raw points - so a formation search here agrees with how the
-  // 15-man squad itself was ranked when picked.
-  private static int effectivePoints(final Player player) {
+  // Season points scaled by this player's fixture-difficulty multiplier (see
+  // Player.getFixtureDifficultyMultiplier - 1.0 per fixture when it matches this player's own
+  // historical average difficulty, nudged up/down for an easier/harder-than-usual one, clamped to a
+  // gentle range) - so a formation search here favours a favourable upcoming fixture over an
+  // unfavourable one, on top of the double/blank-gameweek effect the multiplier already carries.
+  private static double effectivePoints(final Player player) {
 
-    return player.getPoints() * player.getNextFixtures().size();
+    return player.getPoints() * player.getFixtureDifficultyMultiplier();
   }
 
   private static List<Player> rankedByPoints(final List<Player> players, final Random random) {
 
     final List<Player> ranked = new ArrayList<>(players);
-    ranked.sort(Comparator.comparingInt(StartingElevenSelector::effectivePoints).reversed()
+    ranked.sort(Comparator.comparingDouble(StartingElevenSelector::effectivePoints).reversed()
         .thenComparing(Player::getCostNow));
     shuffleTiedGroups(ranked, random);
 
@@ -172,9 +174,9 @@ public final class StartingElevenSelector {
         && first.getCostNow().compareTo(second.getCostNow()) == 0;
   }
 
-  private static int[] prefixPoints(final List<Player> ranked) {
+  private static double[] prefixPoints(final List<Player> ranked) {
 
-    final int[] prefix = new int[ranked.size() + 1];
+    final double[] prefix = new double[ranked.size() + 1];
     for (int i = 0; i < ranked.size(); i++) {
       prefix[i + 1] = prefix[i] + effectivePoints(ranked.get(i));
     }

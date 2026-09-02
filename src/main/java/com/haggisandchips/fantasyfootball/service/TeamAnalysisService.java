@@ -28,9 +28,15 @@ public interface TeamAnalysisService {
   // strategy's stat, unranked. Like calculateKillerTeam below, this is strategy-dependent (which
   // candidates are even considered, and whether a combination counts as an improvement, both depend
   // on the chosen stat), so unlike a plain re-rank it has to be re-run whenever the strategy changes
-  // (see TransfersTab's cache, keyed by Strategy).
+  // (see TransfersTab's cache, keyed by Strategy and considerFixtures together). considerFixtures
+  // toggles whether fixture count/difficulty affect the ranking at all (see PlayerLine/Team's own
+  // field of the same name) - off means every candidate is judged purely on season-to-date stats,
+  // since a transfer is a longer-term decision than any one gameweek's fixtures; on folds in the
+  // same fixture-difficulty signal Starting/OptimalElevenSelector use for picking who starts, useful
+  // e.g. when planning a Free Hit into a run of favourable/double fixtures.
   List<TransferSuggestion> calculateTransferSuggestions(
-      Squad mySquad, List<Player> allPlayers, Strategy strategy, TransferSearchProgressListener progressListener);
+      Squad mySquad, List<Player> allPlayers, Strategy strategy, boolean considerFixtures,
+      TransferSearchProgressListener progressListener);
 
   // Cheap: just sorts/groups/limits an already-computed suggestion list for one strategy. Inner key
   // is the number of transfers used by suggestions in that list (e.g. 1 or 2).
@@ -46,7 +52,7 @@ public interface TeamAnalysisService {
   // cutoff depends on where the season's data actually is and is best judged by eye.
   Team calculateKillerTeam(
       List<Player> allPlayers, Strategy strategy, BigDecimal maxBudget, Map<Position, Double> minimumThresholds,
-      KillerTeamSearchProgressListener progressListener);
+      boolean considerFixtures, KillerTeamSearchProgressListener progressListener);
 
   // Submits a suggested transfer to the live FPL account the given squad was fetched from. Only
   // possible when mySquad.getTransferContext() is non-null - callers should check that before

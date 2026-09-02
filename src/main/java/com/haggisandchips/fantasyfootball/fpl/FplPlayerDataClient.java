@@ -25,9 +25,12 @@ public class FplPlayerDataClient implements PlayerDataClient {
 
   private static final URI BOOTSTRAP_STATIC = URI.create("https://fantasy.premierleague.com/api/bootstrap-static/");
 
-  // future=1 restricts this to fixtures that haven't been played yet, so the lowest-numbered
-  // gameweek left for a given team (see attachNextFixtures) is always that team's next one.
-  private static final URI FIXTURES = URI.create("https://fantasy.premierleague.com/api/fixtures/?future=1");
+  // Deliberately the full season (past + future), not just future=1 - attachNextFixtures still
+  // needs only the unplayed ones to work out each team's next gameweek (see nextGameweekFixtures,
+  // which now filters on finished itself), but the finished ones are what let it also compute each
+  // team's average difficulty faced so far this season (see averageDifficultyFacedByTeamId), which
+  // future=1 alone would make impossible to get without a second call.
+  private static final URI FIXTURES = URI.create("https://fantasy.premierleague.com/api/fixtures/");
 
   private final HttpGateway httpGateway;
 
@@ -82,22 +85,29 @@ public class FplPlayerDataClient implements PlayerDataClient {
       fixturesByTeamId.computeIfAbsent(fixture.getTeamAway(), teamId -> new ArrayList<>()).add(fixture);
     }
 
+    final Map<Integer, Double> averageDifficultyFacedByTeamId = averageDifficultyFacedByTeamId(fixturesByTeamId);
+
     for (final Player player : players) {
       final int teamId = Integer.parseInt(player.getTeam());
       final List<FixtureEntry> teamFixtures = fixturesByTeamId.getOrDefault(teamId, List.of());
       player.setNextFixtures(nextGameweekFixtures(teamId, teamFixtures, shortNamesByTeamId));
+      player.setAverageDifficultyFaced(averageDifficultyFacedByTeamId.get(teamId));
     }
   }
 
-  // This team's own next gameweek is whichever of its remaining fixtures' event numbers is lowest -
-  // a team sitting out a blank gameweek simply has no fixture carrying that number, so its next real
-  // one (however far off) wins instead. Every fixture sharing that same number is then this team's
-  // full set for it (more than one only for a double gameweek), sorted by kickoff purely for a
-  // stable, predictable display order.
+  // This team's own next gameweek is whichever of its still-to-play fixtures' event numbers is
+  // lowest - a team sitting out a blank gameweek simply has no unplayed fixture carrying that
+  // number, so its next real one (however far off) wins instead. Finished fixtures are excluded
+  // here (unlike averageDifficultyFacedByTeamId, which wants exactly those) - FIXTURES now returns
+  // the whole season, so without this filter the "lowest event number" would resolve to a
+  // gameweek already played rather than the next one still to come. Every fixture sharing that same
+  // number is then this team's full set for it (more than one only for a double gameweek), sorted by
+  // kickoff purely for a stable, predictable display order.
   private static List<Fixture> nextGameweekFixtures(
       final int teamId, final List<FixtureEntry> teamFixtures, final Map<Integer, String> shortNamesByTeamId) {
 
     final Optional<Integer> nextGameweek = teamFixtures.stream()
+        .filter(fixture -> !fixture.isFinished())
         .map(FixtureEntry::getEvent)
         .filter(Objects::nonNull)
         .min(Comparator.naturalOrder());
@@ -118,7 +128,35 @@ public class FplPlayerDataClient implements PlayerDataClient {
 
     final boolean home = fixture.getTeamHome() == teamId;
     final int opponentId = home ? fixture.getTeamAway() : fixture.getTeamHome();
-    final int difficulty = home ? fixture.getTeamHomeDifficulty() : fixture.getTeamAwayDifficulty();
-    return new Fixture(shortNamesByTeamId.get(opponentId), home, difficulty);
+    return new Fixture(shortNamesByTeamId.get(opponentId), home, difficultyFor(fixture, teamId));
+  }
+
+  // The average FDR each team has actually faced across its finished fixtures so far this season -
+  // see Player.averageDifficultyFaced/getFixtureDifficultyMultiplier, which use this as the personal
+  // baseline a starting-XI pick's upcoming fixture difficulty is compared against. A team with no
+  // finished fixtures yet (very start of season) simply has no entry, leaving that lookup null for
+  // every one of its players.
+  private static Map<Integer, Double> averageDifficultyFacedByTeamId(
+      final Map<Integer, List<FixtureEntry>> fixturesByTeamId) {
+
+    final Map<Integer, Double> averages = new HashMap<>();
+    for (final Map.Entry<Integer, List<FixtureEntry>> entry : fixturesByTeamId.entrySet()) {
+      final int teamId = entry.getKey();
+      final List<Integer> finishedDifficulties = entry.getValue().stream()
+          .filter(FixtureEntry::isFinished)
+          .map(fixture -> difficultyFor(fixture, teamId))
+          .toList();
+
+      if (!finishedDifficulties.isEmpty()) {
+        averages.put(teamId, finishedDifficulties.stream().mapToInt(Integer::intValue).average().orElseThrow());
+      }
+    }
+
+    return averages;
+  }
+
+  private static int difficultyFor(final FixtureEntry fixture, final int teamId) {
+
+    return fixture.getTeamHome() == teamId ? fixture.getTeamHomeDifficulty() : fixture.getTeamAwayDifficulty();
   }
 }

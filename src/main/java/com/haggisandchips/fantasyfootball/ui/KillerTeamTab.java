@@ -20,6 +20,7 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.Spinner;
@@ -83,6 +84,12 @@ class KillerTeamTab extends BorderPane {
   private final ComboBox<Strategy> strategyDropdown = new ComboBox<>(FXCollections.observableArrayList(Strategy.values()));
 
   private final TextField budgetField = new TextField();
+
+  // Off by default, same reasoning as TransfersTab's own checkbox of the same purpose - but this is
+  // exactly the tab most worth turning it on for: a Killer Team is typically built for a Wildcard or
+  // Free Hit played into a run of favourable/double fixtures, where fixture count and difficulty are
+  // the whole point, not an afterthought (see TeamAnalysisService.calculateKillerTeam).
+  private final CheckBox considerFixturesCheckBox = new CheckBox("Consider fixtures");
 
   // The editable minimum-threshold spinner and live "N players meet this" label for each position,
   // for whichever strategy is currently selected - see displayThresholdsForCurrentStrategy().
@@ -176,6 +183,15 @@ class KillerTeamTab extends BorderPane {
       triggerForCurrentSelection();
     });
 
+    // Mirrors the strategy dropdown's own behaviour, not the threshold spinners' - this changes what
+    // the combinations estimate itself means (see refreshCombinationsEstimate()), so it's refreshed
+    // immediately, but (like a strategy switch) never silently launches a fresh search on its own.
+    considerFixturesCheckBox.setDisable(true);
+    considerFixturesCheckBox.setOnAction(event -> {
+      refreshCombinationsEstimate();
+      showCachedResultOrPromptCalculate();
+    });
+
     combinationsLabel.getStyleClass().add("card-detail");
 
     // A vertical panel down the left rather than a row across the top, so the pitch itself (shown in
@@ -197,6 +213,7 @@ class KillerTeamTab extends BorderPane {
     controls.getChildren().add(strategyBox);
     controls.getChildren().add(budgetBox);
     controls.getChildren().addAll(buildThresholdSpinners());
+    controls.getChildren().add(considerFixturesCheckBox);
     controls.getChildren().addAll(combinationsLabel, calculateButton);
     controls.setPadding(new Insets(20, 16, 20, 20));
 
@@ -338,6 +355,7 @@ class KillerTeamTab extends BorderPane {
 
     strategyDropdown.setDisable(false);
     budgetField.setDisable(false);
+    considerFixturesCheckBox.setDisable(false);
     calculateButton.setDisable(false);
     thresholdSpinners.values().forEach(spinner -> spinner.setDisable(false));
 
@@ -475,7 +493,8 @@ class KillerTeamTab extends BorderPane {
       poolCopy.put(position, new ArrayList<>(availablePlayersByPosition.getOrDefault(position, List.of())));
     }
 
-    final long total = TeamSelector.countCappedCombinations(strategy, poolCopy, currentThresholds);
+    final long total = TeamSelector.countCappedCombinations(
+        strategy, poolCopy, currentThresholds, considerFixturesCheckBox.isSelected());
     combinationsLabel.setText(String.format("%,d combinations", total));
   }
 
@@ -504,7 +523,8 @@ class KillerTeamTab extends BorderPane {
 
     final Strategy strategy = strategyDropdown.getValue();
     final Map<Position, Double> thresholds = Map.copyOf(thresholdsByStrategy.get(strategy));
-    final KillerTeamCacheKey key = new KillerTeamCacheKey(strategy, budget, thresholds);
+    final KillerTeamCacheKey key =
+        new KillerTeamCacheKey(strategy, budget, thresholds, considerFixturesCheckBox.isSelected());
     currentKey = key;
 
     // The in-flight search (if any) is for whichever selection the user is now navigating away
@@ -534,7 +554,8 @@ class KillerTeamTab extends BorderPane {
     // must never change after being used as one.
     final Map<Position, Double> thresholds = Map.copyOf(thresholdsByStrategy.get(strategy));
 
-    final KillerTeamCacheKey key = new KillerTeamCacheKey(strategy, budget, thresholds);
+    final KillerTeamCacheKey key =
+        new KillerTeamCacheKey(strategy, budget, thresholds, considerFixturesCheckBox.isSelected());
     currentKey = key;
 
     // containsKey, not get() != null - KillerTeamFinder.find() can genuinely return null (no
@@ -579,7 +600,8 @@ class KillerTeamTab extends BorderPane {
         };
 
         return teamAnalysisService.calculateKillerTeam(
-            allPlayers, key.strategy(), key.maxBudget(), key.minimumThresholds(), progressListener);
+            allPlayers, key.strategy(), key.maxBudget(), key.minimumThresholds(), key.considerFixtures(),
+            progressListener);
       }
     };
 
@@ -659,7 +681,7 @@ class KillerTeamTab extends BorderPane {
 
     final Squad squad = new Squad(
         team.getCostNow(), maxBudget.subtract(team.getCostNow()), 0, false, team,
-        picked.startingEleven(), picked.substitutes(), null, null, team.getPoints(), null, null);
+        picked.startingEleven(), picked.substitutes(), null, null, (int) Math.round(team.getPoints()), null, null);
 
     // teamAnalysisService/onTransferExecuted are never touched here - this squad's own
     // TransferContext is always null (see Squad above), so MySquadTab never shows its
@@ -821,8 +843,9 @@ class KillerTeamTab extends BorderPane {
 
   // Cache key for a killer-team calculation - equal keys (via the generated equals/hashCode, which
   // for minimumThresholds compares Map content) mean an equal result, so any input that changes the
-  // search must live here. Add fields for future inputs rather than caching by these three alone.
-  private record KillerTeamCacheKey(Strategy strategy, BigDecimal maxBudget, Map<Position, Double> minimumThresholds) {
+  // search must live here. Add fields for future inputs rather than caching by these alone.
+  private record KillerTeamCacheKey(
+      Strategy strategy, BigDecimal maxBudget, Map<Position, Double> minimumThresholds, boolean considerFixtures) {
   }
 
   // A threshold spinner's value factory doesn't step by a fixed amount - instead each

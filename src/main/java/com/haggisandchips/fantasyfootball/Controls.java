@@ -65,6 +65,19 @@ public final class Controls {
   // Same idea as MAX_TRANSFER_PROGRESS_LOG_STEP, but for KillerTeamFinder's from-scratch search.
   public static final int MAX_KILLER_TEAM_PROGRESS_LOG_STEP = 1_000_000;
 
+  // Starting-XI-only fixture-difficulty nudge (see Player.getFixtureDifficultyMultiplier and
+  // Starting/OptimalElevenSelector, which use it) - deliberately NOT used by Strategy/PlayerLine
+  // (squad-building via transfers/killer team), which is a longer-term decision that shouldn't be
+  // swayed by one gameweek's fixture list. How much one FDR point of difference from a player's own
+  // historical average difficulty shifts their effective points, per fixture.
+  public static final double FIXTURE_DIFFICULTY_ADJUSTMENT_FACTOR = 0.06;
+
+  // Clamp on the per-fixture multiplier above - keeps the adjustment a nudge, not a dominant
+  // factor, given effective points elsewhere already swings 2x for a double gameweek alone.
+  public static final double FIXTURE_DIFFICULTY_MULTIPLIER_MIN = 0.7;
+
+  public static final double FIXTURE_DIFFICULTY_MULTIPLIER_MAX = 1.3;
+
   private Controls() {
   }
 }

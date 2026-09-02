@@ -41,12 +41,13 @@ public final class OptimalElevenSelector {
   // gameweek) always loses a fixture-difficulty tiebreak against one that actually has a game.
   private static final int NO_FIXTURE_DIFFICULTY = 6;
 
-  // Effective points (this gameweek's own fixture count applied - see effectivePoints()) desc, then
-  // fixture difficulty asc (easier wins), then home over away, then form desc, then points-per-game
-  // desc - a genuine tie after all of that is settled by coin toss (see shuffleTiedGroups), not by
-  // this comparator.
+  // Effective points (this gameweek's fixture(s) applied, weighted by difficulty - see
+  // effectivePoints()) desc, then fixture difficulty asc (easier wins - a tiebreak within
+  // effectivePoints ties, e.g. two different fixture combinations that happen to weight the same),
+  // then home over away, then form desc, then points-per-game desc - a genuine tie after all of that
+  // is settled by coin toss (see shuffleTiedGroups), not by this comparator.
   private static final Comparator<Player> RANKING = Comparator
-      .comparingInt(OptimalElevenSelector::effectivePoints).reversed()
+      .comparingDouble(OptimalElevenSelector::effectivePoints).reversed()
       .thenComparingInt(OptimalElevenSelector::fixtureDifficultyRank)
       .thenComparingInt(OptimalElevenSelector::homeRank)
       .thenComparing(Player::getForm, Comparator.reverseOrder())
@@ -108,9 +109,9 @@ public final class OptimalElevenSelector {
   private static Formation bestFormation(
       final List<Player> defenders, final List<Player> midfielders, final List<Player> forwards) {
 
-    final int[] defenderPoints = prefixPoints(defenders);
-    final int[] midfielderPoints = prefixPoints(midfielders);
-    final int[] forwardPoints = prefixPoints(forwards);
+    final double[] defenderPoints = prefixPoints(defenders);
+    final double[] midfielderPoints = prefixPoints(midfielders);
+    final double[] forwardPoints = prefixPoints(forwards);
 
     final int maxDefenders = Math.min(MAX_DEFENDERS, defenders.size());
     final int maxMidfielders = Math.min(MAX_MIDFIELDERS, midfielders.size());
@@ -119,7 +120,7 @@ public final class OptimalElevenSelector {
         Math.min(MIN_DEFENDERS, defenders.size()),
         Math.min(MIN_MIDFIELDERS, midfielders.size()),
         Math.min(MIN_FORWARDS, forwards.size()));
-    int bestPoints = -1;
+    double bestPoints = -1;
 
     for (int def = MIN_DEFENDERS; def <= maxDefenders; def++) {
       for (int mid = MIN_MIDFIELDERS; mid <= maxMidfielders; mid++) {
@@ -128,7 +129,7 @@ public final class OptimalElevenSelector {
           continue;
         }
 
-        final int points = defenderPoints[def] + midfielderPoints[mid] + forwardPoints[fwd];
+        final double points = defenderPoints[def] + midfielderPoints[mid] + forwardPoints[fwd];
         if (points > bestPoints) {
           best = new Formation(def, mid, fwd);
           bestPoints = points;
@@ -175,14 +176,15 @@ public final class OptimalElevenSelector {
         && first.getPointsPerGame().compareTo(second.getPointsPerGame()) == 0;
   }
 
-  // Season-to-date points scaled by how many fixtures this player's team has in the gameweek being
-  // planned for - the same idea as StartingElevenSelector's own effectivePoints (kept as a separate
-  // copy here, not shared, per this file's own top comment on staying independent from that
-  // selector), so a double gameweek makes someone a stronger captaincy/lineup pick and a blank one a
-  // weaker one, here too.
-  private static int effectivePoints(final Player player) {
+  // Season-to-date points scaled by this player's fixture-difficulty multiplier for the gameweek
+  // being planned for (see Player.getFixtureDifficultyMultiplier) - the same idea as
+  // StartingElevenSelector's own effectivePoints (kept as a separate copy here, not shared, per this
+  // file's own top comment on staying independent from that selector), so a double gameweek or a
+  // fixture easier than this player's own norm makes them a stronger captaincy/lineup pick, and a
+  // blank one or a fixture harder than their norm a weaker one, here too.
+  private static double effectivePoints(final Player player) {
 
-    return player.getPoints() * player.getNextFixtures().size();
+    return player.getPoints() * player.getFixtureDifficultyMultiplier();
   }
 
   // A double gameweek's fixtures are ranked by their first (earliest-kickoff) one - the tiebreak
@@ -200,9 +202,9 @@ public final class OptimalElevenSelector {
     return !fixtures.isEmpty() && fixtures.get(0).isHome() ? 0 : 1;
   }
 
-  private static int[] prefixPoints(final List<Player> ranked) {
+  private static double[] prefixPoints(final List<Player> ranked) {
 
-    final int[] prefix = new int[ranked.size() + 1];
+    final double[] prefix = new double[ranked.size() + 1];
     for (int i = 0; i < ranked.size(); i++) {
       prefix[i + 1] = prefix[i] + effectivePoints(ranked.get(i));
     }

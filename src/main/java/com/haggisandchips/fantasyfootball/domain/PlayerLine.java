@@ -10,25 +10,33 @@ public class PlayerLine implements Comparable<PlayerLine> {
 
   final List<Player> players;
   final BigDecimal costNow;
-  final int points;
+  final double points;
   final BigDecimal form;
   final BigDecimal pointsPerGame;
   private final Position position;
 
-  public PlayerLine(final Position position, final List<Player> players) {
+  // considerFixtures governs squad-building's whole relationship with fixtures (see Team's own
+  // field of the same name, which this is always built consistently with) - false means points/
+  // form/points-per-game are exactly the player's own season-to-date values, fixtures ignored
+  // entirely; true multiplies each by Player.getFixtureDifficultyMultiplier() (fixture count *and*
+  // difficulty, the same signal Starting/OptimalElevenSelector use for picking who starts). A plain
+  // double (not int) even in the false case, since the flag is a runtime choice, not a compile-time
+  // one - the multiplier is 1.0 exactly when fixtures aren't considered, so points still lands on a
+  // whole number then, just typed the same way either way.
+  public PlayerLine(final Position position, final List<Player> players, final boolean considerFixtures) {
     this.position = position;
     this.players = players;
 
     BigDecimal costNow = new BigDecimal("0"), form = new BigDecimal("0"), pointsPerGame = new BigDecimal("0");
-    int points = 0;
+    double points = 0;
     for (final Player player : players) {
 
-      final int fixtureMultiplier = player.getNextFixtures().size();
+      final double multiplier = considerFixtures ? player.getFixtureDifficultyMultiplier() : 1.0;
 
       costNow = costNow.add(player.getCostNow());
-      points += player.getPoints() * fixtureMultiplier;
-      form = form.add(player.getForm().multiply(BigDecimal.valueOf(fixtureMultiplier)));
-      pointsPerGame = pointsPerGame.add(player.getPointsPerGame().multiply(BigDecimal.valueOf(fixtureMultiplier)));
+      points += player.getPoints() * multiplier;
+      form = form.add(player.getForm().multiply(BigDecimal.valueOf(multiplier)));
+      pointsPerGame = pointsPerGame.add(player.getPointsPerGame().multiply(BigDecimal.valueOf(multiplier)));
     }
 
     this.costNow = costNow;
