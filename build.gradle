@@ -76,8 +76,13 @@ def buildMacIcns = {
     }
 
     def icnsFile = new File(layout.buildDirectory.get().asFile, 'jpackage-icon/AppIcon.icns')
-    exec {
-        commandLine 'iconutil', '-c', 'icns', '-o', icnsFile.path, iconsetDir.path
+    def process = new ProcessBuilder('iconutil', '-c', 'icns', '-o', icnsFile.path, iconsetDir.path)
+        .redirectErrorStream(true)
+        .start()
+    def output = process.inputStream.text
+    def exitCode = process.waitFor()
+    if (exitCode != 0) {
+        throw new GradleException("iconutil failed with exit code ${exitCode}:\n${output}")
     }
     icnsFile
 }
