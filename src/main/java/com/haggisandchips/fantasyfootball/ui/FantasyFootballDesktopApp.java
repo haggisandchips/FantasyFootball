@@ -19,6 +19,7 @@ import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ProgressIndicator;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.image.Image;
@@ -130,10 +131,11 @@ public class FantasyFootballDesktopApp extends Application {
   // Only added in live mode (FPL_MY_SQUAD_FILE unset) - in stub mode there's no live account to
   // log in to.
   private MenuBar buildMenuBar(
-      final Stage stage, final FplTokenHolder tokenHolder, final TokenStore tokenStore, final Runnable onAuthChanged) {
+      final Stage stage, final FplTokenHolder tokenHolder, final TokenStore tokenStore, final Runnable reload) {
 
     final MenuItem loginItem = new MenuItem("Log in to FPL...");
     final MenuItem logoutItem = new MenuItem("Log out");
+    final MenuItem reloadItem = new MenuItem("Reload");
 
     final Runnable refreshMenuState = () -> {
       final boolean loggedIn = tokenHolder.get().isPresent();
@@ -147,7 +149,7 @@ public class FantasyFootballDesktopApp extends Application {
           tokenHolder.set(token);
           tokenStore.save(token);
           refreshMenuState.run();
-          onAuthChanged.run();
+          reload.run();
         },
         refreshMenuState));
 
@@ -156,10 +158,17 @@ public class FantasyFootballDesktopApp extends Application {
       tokenStore.clear();
       stage.setTitle("Fantasy Football");
       refreshMenuState.run();
-      onAuthChanged.run();
+      reload.run();
     });
 
-    return new MenuBar(new Menu("Account", null, loginItem, logoutItem));
+    // Re-fetches the player pool and live squad and refreshes My Squad and Transfers against them -
+    // exactly what a submitted transfer/substitution already triggers (see loadMySquad), just
+    // invokable on demand. Killer Team is deliberately left alone here too: its own init() only
+    // ever refreshes its internal mySquad reference on a re-call, never resetting the strategy/
+    // budget/cache the user has already chosen there.
+    reloadItem.setOnAction(event -> reload.run());
+
+    return new MenuBar(new Menu("Account", null, loginItem, logoutItem, new SeparatorMenuItem(), reloadItem));
   }
 
   private void loadSquadThenTransfers(

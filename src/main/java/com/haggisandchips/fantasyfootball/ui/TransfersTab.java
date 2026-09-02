@@ -120,24 +120,29 @@ class TransfersTab extends ScrollPane {
     showLoading(new Label("Loading transfer suggestions..."));
   }
 
-  // The one-time setup below is a no-op after the first call - a submitted transfer (see
-  // FantasyFootballDesktopApp) re-fetches the squad and calls this again, but that must not reset
-  // the user's chosen strategy or throw away the cache just because the live squad changed
-  // elsewhere. mySquad/onTransferExecuted are the exception - refreshed unconditionally on every
-  // call, same as KillerTeamTab's own init().
+  // The one-time setup below (enabling the controls) is a no-op after the first call - a submitted
+  // transfer or an explicit reload (see FantasyFootballDesktopApp) re-fetches the squad (and, for a
+  // reload, the player pool too) and calls this again, but that must not reset the user's chosen
+  // strategy. mySquad/allPlayers/onTransferExecuted are refreshed unconditionally on every call -
+  // unlike KillerTeamTab, every cached (strategy, considerFixtures) result was calculated against
+  // the old squad/player pool, which just changed underneath it, so the cache is stale and has to be
+  // thrown away and the current selection recalculated - otherwise the tab would keep showing (and
+  // letting you submit) transfers computed against a squad or prices that no longer exist.
   void init(
       final TeamAnalysisService teamAnalysisService, final List<Player> allPlayers, final Squad mySquad,
       final BiConsumer<Strategy, Map<Integer, List<TransferSuggestion>>> onResult, final Runnable onTransferExecuted) {
 
     this.mySquad = mySquad;
+    this.allPlayers = allPlayers;
     this.onTransferExecuted = onTransferExecuted;
 
     if (this.teamAnalysisService != null) {
+      cache.clear();
+      triggerForCurrentSelection();
       return;
     }
 
     this.teamAnalysisService = teamAnalysisService;
-    this.allPlayers = allPlayers;
     this.onResult = onResult;
 
     strategyDropdown.setDisable(false);
