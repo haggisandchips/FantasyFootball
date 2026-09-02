@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-09-02
+
+- Fix Transfers showing stale suggestions (still calculated, and submittable, against the squad
+  from before) after making a transfer - the tab now recalculates against the current squad.
+- Add a "Reload" item to the Account menu to refresh My Squad and Transfers on demand.
+
 ## [1.0.1] - 2026-09-02
 
 - Fix substitution suggestions on the My Squad pitch flip-flopping between runs (and sometimes
