@@ -196,3 +196,10 @@
   -fx-font-size: 26px;
   -fx-font-weight: bold;
 }
+
+/* Shown in TransfersTab when the chosen transfer budget goes beyond the free transfers actually
+   available - same red as the lineup/captaincy "outgoing" indicators above. */
+.transfer-cost-warning {
+  -fx-text-fill: #e74c3c;
+  -fx-font-weight: bold;
+}

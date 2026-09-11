@@ -46,9 +46,11 @@ public final class Controls {
 
   public static final int MAX_TRANSFER_SUGGESTIONS_LOGGED = 5;
 
-  // Plan longer term transfer strategies towards a dream team instead of using the real free
-  // transfer count. 0 uses whatever Squad.getFreeTransfers() reports.
-  public static final int FREE_TRANSFERS_OVERRIDE = 0;
+  // FPL's standard deduction for every transfer beyond however many you actually have free -
+  // TransfersTab uses this to warn before submitting a suggestion that uses more transfers than
+  // mySquad.getFreeTransfers() reports (the transfer budget there is user-editable precisely so a
+  // hit can be planned deliberately, so this is a warning, not an enforced cap).
+  public static final int POINTS_COST_PER_EXTRA_TRANSFER = 4;
 
   // FPL reports no per-transfer point cost while a wildcard/free hit chip is active (or during the
   // one-off pre-deadline-1 grace period) - real free transfers are effectively unlimited then, but

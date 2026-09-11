@@ -33,9 +33,12 @@ public interface TeamAnalysisService {
   // field of the same name) - off means every candidate is judged purely on season-to-date stats,
   // since a transfer is a longer-term decision than any one gameweek's fixtures; on folds in the
   // same fixture-difficulty signal Starting/OptimalElevenSelector use for picking who starts, useful
-  // e.g. when planning a Free Hit into a run of favourable/double fixtures.
+  // e.g. when planning a Free Hit into a run of favourable/double fixtures. transferBudget is the
+  // largest number of simultaneous transfers to search for (every size from 1 up to it) - normally
+  // mySquad.getFreeTransfers(), but TransfersTab lets it be raised or lowered so a hit (or forcing a
+  // search even with 0 free transfers) can be planned deliberately.
   List<TransferSuggestion> calculateTransferSuggestions(
-      Squad mySquad, List<Player> allPlayers, Strategy strategy, boolean considerFixtures,
+      Squad mySquad, List<Player> allPlayers, Strategy strategy, boolean considerFixtures, int transferBudget,
       TransferSearchProgressListener progressListener);
 
   // Cheap: just sorts/groups/limits an already-computed suggestion list for one strategy. Inner key

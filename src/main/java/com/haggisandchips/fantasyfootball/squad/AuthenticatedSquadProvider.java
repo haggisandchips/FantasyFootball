@@ -145,8 +145,12 @@ public class AuthenticatedSquadProvider implements SquadProvider {
 
   private static int resolveFreeTransfers(final Transfers transfers) {
 
+    // FPL reports "limit" as the free transfers the gameweek started with, not what's left - a
+    // transfer already made this gameweek (whether submitted through this app or elsewhere, e.g.
+    // the official site/app) is counted separately in "made" and has to be subtracted here, or a
+    // used-up free transfer keeps showing as available until the next gameweek's limit overwrites it.
     if (transfers.getLimit() != null) {
-      return transfers.getLimit();
+      return Math.max(0, transfers.getLimit() - transfers.getMade());
     }
 
     if ("unlimited".equals(transfers.getStatus())) {
@@ -214,6 +218,10 @@ public class AuthenticatedSquadProvider implements SquadProvider {
   private static class Transfers {
 
     private Integer limit;
+
+    // How many transfers have already been made this gameweek - subtracted from "limit" in
+    // resolveFreeTransfers to get what's actually still available.
+    private int made;
 
     // "cost" (normal - limit free transfers, hits beyond that cost points), "unlimited" (wildcard
     // or free hit chip active, or the one-off pre-deadline-1 grace period - no per-transfer cost

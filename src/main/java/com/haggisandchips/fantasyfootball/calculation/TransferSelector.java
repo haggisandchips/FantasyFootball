@@ -40,7 +40,7 @@ public final class TransferSelector {
 
   public static List<TransferSuggestion> getTransferSuggestions(
       final Squad mySquad, final Map<Position, List<Player>> availablePlayers, final Strategy strategy,
-      final boolean considerFixtures, final TransferSearchProgressListener progressListener) {
+      final boolean considerFixtures, final int maxTransferBudget, final TransferSearchProgressListener progressListener) {
 
     // mySquad.getTeam() is always the fixture-unaware baseline (see SquadProvider implementations) -
     // rebuilt here per the toggle so myTeam and every candidate makeSubstitutions() builds from it
@@ -70,17 +70,11 @@ public final class TransferSelector {
     final Map<Player, Player> transfers = new HashMap<>();
     final Set<Player> selectedIns = new HashSet<>();
 
-    // Use this to plan longer term strategies making interim transfers towards a dream team.
-    int transferBudget =
-        Controls.FREE_TRANSFERS_OVERRIDE > 0
-            ? Controls.FREE_TRANSFERS_OVERRIDE
-            : mySquad.getFreeTransfers();
-
     // Avoid recomputing the same number of swaps more than once as the budget counts down.
     final Set<Integer> sizesConsidered = new HashSet<>();
 
     try {
-      for (; transferBudget > 0; transferBudget--) {
+      for (int transferBudget = maxTransferBudget; transferBudget > 0; transferBudget--) {
         if (sizesConsidered.contains(transferBudget)) {
           continue;
         }

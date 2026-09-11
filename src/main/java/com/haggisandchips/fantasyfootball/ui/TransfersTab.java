@@ -1,5 +1,6 @@
 package com.haggisandchips.fantasyfootball.ui;
 
+import com.haggisandchips.fantasyfootball.Controls;
 import com.haggisandchips.fantasyfootball.calculation.TransferSearchProgressListener;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.Squad;
@@ -61,6 +62,20 @@ class TransfersTab extends ScrollPane {
   // TeamAnalysisService.calculateTransferSuggestions).
   private final CheckBox considerFixturesCheckBox = new CheckBox("Consider fixtures");
 
+  // How many simultaneous transfers to search for (every size from 1 up to this). Defaulted to
+  // mySquad.getFreeTransfers() the first time it's known (see init()), but left user-editable from
+  // there - raising it plans a deliberate hit (or forces a search at all when there are 0 free
+  // transfers), lowering it restricts the search to fewer than what's actually free. Capped at 2
+  // (rather than FPL's real rollover cap of 5) - the combinatorial search at 3+ simultaneous
+  // transfers takes too long to be worth offering (see TransferSelector/Controls.MAX_TRANSFER_
+  // PROGRESS_LOG_STEP's own comment on how fast this blows up).
+  private final ComboBox<Integer> transferBudgetDropdown =
+      new ComboBox<>(FXCollections.observableArrayList(0, 1, 2));
+
+  // Set whenever the currently displayed suggestions use more transfers than mySquad.getFreeTransfers()
+  // actually allows for free - see updateCostWarning().
+  private final Label costWarningLabel = new Label();
+
   // Rebuilt (not just its children replaced) on every strategy switch, alongside suggestionsBox.
   private final VBox transferSection = new VBox(16);
 
@@ -111,9 +126,17 @@ class TransfersTab extends ScrollPane {
     considerFixturesCheckBox.setDisable(true);
     considerFixturesCheckBox.setOnAction(event -> triggerForCurrentSelection());
 
+    transferBudgetDropdown.setDisable(true);
+    transferBudgetDropdown.setOnAction(event -> triggerForCurrentSelection());
+
+    costWarningLabel.getStyleClass().add("transfer-cost-warning");
+    costWarningLabel.setWrapText(true);
+
     suggestionsBox.setAlignment(Pos.CENTER);
 
-    header = new HBox(12, sectionLabel("Suggested Transfers"), strategyDropdown, considerFixturesCheckBox);
+    header = new HBox(12,
+        sectionLabel("Suggested Transfers"), strategyDropdown, considerFixturesCheckBox,
+        new Label("Transfers:"), transferBudgetDropdown);
     header.setAlignment(Pos.CENTER_LEFT);
 
     setFitToWidth(true);
@@ -147,12 +170,17 @@ class TransfersTab extends ScrollPane {
 
     strategyDropdown.setDisable(false);
     considerFixturesCheckBox.setDisable(false);
+
+    transferBudgetDropdown.setValue(Math.max(0, Math.min(2, mySquad.getFreeTransfers())));
+    transferBudgetDropdown.setDisable(false);
+
     triggerForCurrentSelection();
   }
 
   private void triggerForCurrentSelection() {
 
-    final TransfersKey key = new TransfersKey(strategyDropdown.getValue(), considerFixturesCheckBox.isSelected());
+    final TransfersKey key = new TransfersKey(
+        strategyDropdown.getValue(), considerFixturesCheckBox.isSelected(), transferBudgetDropdown.getValue());
     currentKey = key;
 
     if (cache.containsKey(key)) {
@@ -177,7 +205,7 @@ class TransfersTab extends ScrollPane {
         };
 
         return teamAnalysisService.calculateTransferSuggestions(
-            mySquad, allPlayers, key.strategy(), key.considerFixtures(), progressListener);
+            mySquad, allPlayers, key.strategy(), key.considerFixtures(), key.transferBudget(), progressListener);
       }
     };
 
@@ -250,6 +278,7 @@ class TransfersTab extends ScrollPane {
 
     final VBox root = new VBox(16,
         header,
+        costWarningLabel,
         transferSection,
         new Separator(),
         sectionLabel("Injured / Doubtful"),
@@ -300,6 +329,26 @@ class TransfersTab extends ScrollPane {
     return candidateCount < currentCount;
   }
 
+  // Warns when the transfer count actually being shown (which follows the toggle above, not just
+  // the dropdown - the dropdown only sets the upper bound the search covers) goes beyond
+  // mySquad.getFreeTransfers(), and by how many points that'll cost if submitted. FPL charges no
+  // per-transfer cost while transfers are unlimited (wildcard/free hit/pre-deadline-1 grace period),
+  // so no warning applies then regardless of count.
+  private void updateCostWarning(final int transferCount) {
+
+    final int extraTransfers = mySquad.isUnlimitedTransfers() ? 0 : Math.max(0, transferCount - mySquad.getFreeTransfers());
+
+    if (extraTransfers <= 0) {
+      costWarningLabel.setText("");
+      return;
+    }
+
+    final int pointsCost = extraTransfers * Controls.POINTS_COST_PER_EXTRA_TRANSFER;
+    costWarningLabel.setText(String.format(
+        "%d of these transfer(s) go beyond your %d free transfer(s) - submitting will cost %d point(s)",
+        extraTransfers, mySquad.getFreeTransfers(), pointsCost));
+  }
+
   private HBox transferCountToggle() {
 
     if (suggestionsByCount.size() < 2) {
@@ -322,6 +371,8 @@ class TransfersTab extends ScrollPane {
   }
 
   private void refreshSuggestions(final int transferCount) {
+
+    updateCostWarning(transferCount);
 
     final List<TransferSuggestion> suggestions = suggestionsByCount.getOrDefault(transferCount, List.of());
 
@@ -501,6 +552,6 @@ class TransfersTab extends ScrollPane {
 
   // Cache/staleness key for a transfer search - equal keys mean an equal result, so any input that
   // changes the search (see TeamAnalysisService.calculateTransferSuggestions) must live here.
-  private record TransfersKey(Strategy strategy, boolean considerFixtures) {
+  private record TransfersKey(Strategy strategy, boolean considerFixtures, int transferBudget) {
   }
 }

@@ -96,15 +96,15 @@ public class TeamAnalysisServiceImpl implements TeamAnalysisService {
   @Override
   public List<TransferSuggestion> calculateTransferSuggestions(
       final Squad mySquad, final List<Player> allPlayers, final Strategy strategy, final boolean considerFixtures,
-      final TransferSearchProgressListener progressListener) {
+      final int transferBudget, final TransferSearchProgressListener progressListener) {
 
-    if (mySquad.getFreeTransfers() <= 0 && Controls.FREE_TRANSFERS_OVERRIDE <= 0) {
+    if (transferBudget <= 0) {
       return List.of();
     }
 
     final Map<Position, List<Player>> availablePlayers = groupAvailablePlayers(allPlayers);
     return TransferSelector.getTransferSuggestions(
-        mySquad, copyAvailablePlayers(availablePlayers), strategy, considerFixtures, progressListener);
+        mySquad, copyAvailablePlayers(availablePlayers), strategy, considerFixtures, transferBudget, progressListener);
   }
 
   @Override
