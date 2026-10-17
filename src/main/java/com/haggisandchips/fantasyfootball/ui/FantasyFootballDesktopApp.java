@@ -2,7 +2,6 @@ package com.haggisandchips.fantasyfootball.ui;
 
 import com.haggisandchips.fantasyfootball.FantasyFootballApplication;
 import com.haggisandchips.fantasyfootball.auth.FplTokenHolder;
-import com.haggisandchips.fantasyfootball.auth.TokenStore;
 import com.haggisandchips.fantasyfootball.domain.Player;
 import com.haggisandchips.fantasyfootball.domain.Squad;
 import com.haggisandchips.fantasyfootball.domain.Strategy;
@@ -83,7 +82,6 @@ public class FantasyFootballDesktopApp extends Application {
     final String squadFile = springContext.getEnvironment().getProperty("fpl.my-squad-file");
     final boolean liveMode = squadFile == null || squadFile.isBlank();
     final FplTokenHolder tokenHolder = springContext.getBean(FplTokenHolder.class);
-    final TokenStore tokenStore = springContext.getBean(TokenStore.class);
 
     final Tab mySquadTab = new Tab("My Squad", loadingPane());
     mySquadTab.setClosable(false);
@@ -102,12 +100,23 @@ public class FantasyFootballDesktopApp extends Application {
     final TabPane tabPane = new TabPane(mySquadTab, transfersTabWrapper, killerTeamTabWrapper);
     VBox.setVgrow(tabPane, Priority.ALWAYS);
 
-    final Runnable reload = () ->
-        loadSquadThenTransfers(stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, killerTeamTab);
+    // Logging in is the only way past this in live mode, so with no token (cancelled login dialog,
+    // or an explicit log out) show the same message everywhere rather than attempting - and
+    // failing - the fetches.
+    final Runnable reload = () -> {
+      if (liveMode && tokenHolder.get().isEmpty()) {
+        final String message = "Not logged in to FPL - use Account -> Log in to FPL...";
+        mySquadTab.setContent(new StackPane(new Label(message)));
+        transfersTab.showNotice(message);
+        killerTeamTab.showNotice(message);
+        return;
+      }
+      loadSquadThenTransfers(stage, teamAnalysisService, analysisReporter, mySquadTab, transfersTab, killerTeamTab);
+    };
 
     final VBox root = new VBox(tabPane);
     if (liveMode) {
-      root.getChildren().add(0, buildMenuBar(stage, tokenHolder, tokenStore, reload));
+      root.getChildren().add(0, buildMenuBar(stage, tokenHolder, reload));
     }
 
     final Scene scene = new Scene(root, 1140, 1020);
@@ -119,10 +128,7 @@ public class FantasyFootballDesktopApp extends Application {
     stage.show();
 
     if (liveMode && tokenHolder.get().isEmpty()) {
-      FplLoginDialog.showAndCaptureToken(stage).ifPresent(token -> {
-        tokenHolder.set(token);
-        tokenStore.save(token);
-      });
+      FplLoginDialog.showAndCaptureToken(stage).ifPresent(tokenHolder::set);
     }
 
     reload.run();
@@ -131,7 +137,7 @@ public class FantasyFootballDesktopApp extends Application {
   // Only added in live mode (FPL_MY_SQUAD_FILE unset) - in stub mode there's no live account to
   // log in to.
   private MenuBar buildMenuBar(
-      final Stage stage, final FplTokenHolder tokenHolder, final TokenStore tokenStore, final Runnable reload) {
+      final Stage stage, final FplTokenHolder tokenHolder, final Runnable reload) {
 
     final MenuItem loginItem = new MenuItem("Log in to FPL...");
     final MenuItem logoutItem = new MenuItem("Log out");
@@ -147,7 +153,6 @@ public class FantasyFootballDesktopApp extends Application {
     loginItem.setOnAction(event -> FplLoginDialog.showAndCaptureToken(stage).ifPresentOrElse(
         token -> {
           tokenHolder.set(token);
-          tokenStore.save(token);
           refreshMenuState.run();
           reload.run();
         },
@@ -155,7 +160,6 @@ public class FantasyFootballDesktopApp extends Application {
 
     logoutItem.setOnAction(event -> {
       tokenHolder.clear();
-      tokenStore.clear();
       stage.setTitle("Fantasy Football");
       refreshMenuState.run();
       reload.run();

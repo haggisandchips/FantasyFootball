@@ -710,6 +710,13 @@ class KillerTeamTab extends BorderPane {
     setBottom(null);
   }
 
+  // A plain message with no "Failed" prefix, for when nothing was attempted (e.g. not logged in).
+  void showNotice(final String message) {
+
+    setCenter(new StackPane(new Label(message)));
+    setBottom(null);
+  }
+
   // The transfers needed to turn mySquad into killerTeam - every squad player killerTeam doesn't
   // keep, paired position-by-position with every killerTeam player mySquad doesn't already have.
   // Both are always full, valid squads (2 GOALKEEPER/5 DEFENDER/5 MIDFIELDER/3 FORWARD - see

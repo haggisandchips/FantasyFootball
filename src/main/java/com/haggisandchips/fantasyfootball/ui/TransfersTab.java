@@ -269,6 +269,12 @@ class TransfersTab extends ScrollPane {
     showLoading(new Label("Failed to load data: " + message));
   }
 
+  // A plain message with no "Failed" prefix, for when nothing was attempted (e.g. not logged in).
+  void showNotice(final String message) {
+
+    showLoading(new Label(message));
+  }
+
   private void showResult(final TransfersKey key) {
 
     suggestionsByCount = new TreeMap<>(cache.get(key));

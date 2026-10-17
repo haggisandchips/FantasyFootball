@@ -69,10 +69,8 @@ picks the token up automatically: it checks the clipboard when it opens and pre-
 selects) the field if the contents look roughly like a bearer JWT, so the flow becomes click
 bookmarklet -> switch to the app -> Log in, no manual copy-paste needed.
 
-The token is encrypted with Windows DPAPI (tied to your Windows login) before being written to
-`%LOCALAPPDATA%\FantasyFootball\fpl-token.dat`, so it persists across launches but is unreadable to
-anyone without your Windows account. Use **Account -> Log out** to clear it and switch accounts -
-the next login (automatic on the next launch, or via the menu) prompts for a fresh paste.
+The token is held in memory only and never written to disk, so every launch starts logged out and
+the login dialog opens automatically. Use **Account -> Log out** to clear it and switch accounts.
 
 No session cookie is needed alongside the token - that was tried and confirmed unnecessary.
 
