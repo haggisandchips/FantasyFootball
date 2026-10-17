@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-10-17
+
+- Stop persisting the FPL login token to disk; the app now shows a clean not-logged-in state until
+  you log in.
+- Make requests to the FPL API look more like Chrome (browser headers, redirects, cookies).
+
 ## [1.0.3] - 2026-09-11
 
 - Fix free transfers showing stale (e.g. still 1 after you'd already used it, whether through the
