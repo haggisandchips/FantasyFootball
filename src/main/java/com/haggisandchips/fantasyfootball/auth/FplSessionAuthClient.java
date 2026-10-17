@@ -1,5 +1,6 @@
 package com.haggisandchips.fantasyfootball.auth;
 
+import com.haggisandchips.fantasyfootball.http.BrowserRequests;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Conditional;
 import org.springframework.stereotype.Component;
@@ -25,40 +26,40 @@ public class FplSessionAuthClient implements FplAuthClient {
 
   private final FplTokenHolder tokenHolder;
 
-  private final HttpClient httpClient = HttpClient.newHttpClient();
+  private final HttpClient httpClient = BrowserRequests.newClient();
 
   @Override
   public String authenticatedGet(final URI uri) throws IOException, InterruptedException {
 
-    final HttpRequest request = authenticatedRequestBuilder(uri).GET().build();
+    final HttpRequest request = authenticatedRequestBuilder(uri, false).GET().build();
     return send(request);
   }
 
   @Override
   public String authenticatedPost(final URI uri, final String jsonBody) throws IOException, InterruptedException {
 
-    final HttpRequest request = authenticatedRequestBuilder(uri)
+    final HttpRequest request = authenticatedRequestBuilder(uri, true)
         .header("Content-Type", "application/json")
         .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
         .build();
     return send(request);
   }
 
-  private HttpRequest.Builder authenticatedRequestBuilder(final URI uri) throws IOException {
+  private HttpRequest.Builder authenticatedRequestBuilder(final URI uri, final boolean post) throws IOException {
 
     final String authorization = tokenHolder.get().orElse(null);
     if (authorization == null || authorization.isBlank()) {
       throw new IOException("Not logged in to FPL - use Account -> Log in to FPL... in the app to authenticate");
     }
 
-    return HttpRequest.newBuilder(uri)
+    return BrowserRequests.builder(uri, post)
         .timeout(TIMEOUT)
         .header("X-Api-Authorization", authorization);
   }
 
   private String send(final HttpRequest request) throws IOException, InterruptedException {
 
-    final HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    final HttpResponse<String> response = BrowserRequests.send(httpClient, request);
 
     if (response.statusCode() != 200) {
       // Body included (not just the status) because a rejected mutating request - e.g. a transfer
