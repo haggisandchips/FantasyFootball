@@ -147,6 +147,7 @@ public class FantasyFootballDesktopApp extends Application {
       final boolean loggedIn = tokenHolder.get().isPresent();
       loginItem.setDisable(loggedIn);
       logoutItem.setDisable(!loggedIn);
+      reloadItem.setDisable(!loggedIn);
     };
     refreshMenuState.run();
 

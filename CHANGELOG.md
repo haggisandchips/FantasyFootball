@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-10-17
+
+- Disable the Account -> Reload menu item when not logged in to FPL.
+
 ## [1.0.4] - 2026-10-17
 
 - Stop persisting the FPL login token to disk; the app now shows a clean not-logged-in state until
